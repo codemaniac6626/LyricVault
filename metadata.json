@@ -1,0 +1,6 @@
+{
+  "name": "LyricVault",
+  "description": "A local-first songwriter's idea vault and songwriting studio with interleaved text and audio melody notes, grounded AI idea matching from your own vault, usage tracking, and single-file JSON export/import.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
