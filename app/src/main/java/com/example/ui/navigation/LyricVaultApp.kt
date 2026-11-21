@@ -49,6 +49,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.ui.screens.AiSettingsScreen
 import com.example.ui.screens.BackupSettingsScreen
 import com.example.ui.screens.IdeaEditorScreen
 import com.example.ui.screens.SongsListScreen
@@ -60,6 +61,7 @@ object Routes {
     const val VAULT = "vault"
     const val STUDIO = "studio"
     const val BACKUP = "backup"
+    const val AI_SETTINGS = "ai_settings"
     const val IDEA_EDITOR = "idea_editor/{ideaId}/{autoRecord}"
     const val SONGWRITING = "songwriting/{songId}"
 
@@ -307,7 +309,15 @@ fun LyricVaultApp(viewModel: LyricVaultViewModel) {
                             onExportJson = viewModel::exportVaultJson,
                             onImportFile = viewModel::importVaultFile,
                             onBulkImportText = viewModel::bulkImportText,
-                            onThemeModeChange = viewModel::setThemeMode
+                            onThemeModeChange = viewModel::setThemeMode,
+                            onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) }
+                        )
+                    }
+
+                    composable(Routes.AI_SETTINGS) {
+                        AiSettingsScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
 
@@ -353,6 +363,7 @@ fun LyricVaultApp(viewModel: LyricVaultViewModel) {
                             onOpenIdea = { ideaId ->
                                 navController.navigate(Routes.ideaEditor(ideaId = ideaId, autoRecord = false))
                             },
+                            onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) },
                             onNavigateBack = { navController.popBackStack() }
                         )
                     }
