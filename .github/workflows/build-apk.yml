@@ -51,18 +51,9 @@ jobs:
           distribution: temurin
 
       - name: Install Android 36.1 platform and build tools
-        # GitHub-hosted ubuntu runners already ship a full Android SDK
-        # (cmdline-tools on PATH, ANDROID_HOME preset), so no setup action
-        # is needed. The android-actions/setup-android action was removed:
-        # its default packages include the legacy "tools" package, which no
-        # longer exists in the SDK repository, so it failed every run with
-        # "Failed to find package 'tools'".
-        # compileSdk is 36 with minor API level 1, which lives in its own
-        # platform package (android-36.1); build tools stay at 36.0.0.
-        run: |
-          echo "sdkmanager: $(sdkmanager --version)"
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36.1 build-tools;36.0.0
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
