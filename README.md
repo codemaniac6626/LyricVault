@@ -14,6 +14,12 @@ LyricVault is a local-first Android songwriting app for capturing lyrics, contex
 - Import plain text files or generic JSON idea lists
 - Use the app with dark or light mode
 
+## Screenshots
+
+| Vault | Studio | Backup |
+| --- | --- | --- |
+| <img src="docs/screenshots/vault.png" alt="LyricVault vault screen" width="280"> | <img src="docs/screenshots/studio.png" alt="LyricVault studio screen" width="280"> | <img src="docs/screenshots/backup.png" alt="LyricVault backup screen" width="280"> |
+
 ## Tech stack
 
 - Kotlin
