@@ -97,6 +97,9 @@ class VaultBackupManager(
                             put("title", song.title)
                             put("vibeDescription", song.vibeDescription)
                             put("lyrics", song.lyrics)
+                            // put(String, null) removes the key, which is
+                            // fine: import treats a missing key as null.
+                            put("customInstruction", song.customInstruction)
                             put("createdAt", song.createdAt)
                             put("updatedAt", song.updatedAt)
                         }
@@ -183,6 +186,10 @@ class VaultBackupManager(
                             title = obj.optString("title", ""),
                             vibeDescription = obj.optString("vibeDescription", ""),
                             lyrics = obj.optString("lyrics", ""),
+                            // Old backups have no key: optString returns "",
+                            // which collapses to null (use global instruction).
+                            customInstruction = obj.optString("customInstruction", "")
+                                .ifBlank { null },
                             createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                             updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
                         )

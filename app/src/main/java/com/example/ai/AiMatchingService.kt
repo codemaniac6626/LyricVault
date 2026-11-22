@@ -63,13 +63,18 @@ class AiMatchingService(
     suspend fun match(
         ideas: List<IdeaNoteWithDetails>,
         query: String,
-        mode: MatchMode
+        mode: MatchMode,
+        instruction: String = ""
     ): VaultMatchResult {
         val keyword = OfflineVaultMatcher.matchVault(ideas = ideas, queryText = query, mode = mode)
         val embedder = activeEmbedder() ?: return keyword
         if (query.isBlank()) return keyword
-        val vectorItems = runCatching { vectorMatch(ideas, query, embedder) }
-            .getOrElse { return keyword }
+        // The instruction steers the vector search by riding inside the
+        // embedded query; keyword matching is term-based and cannot take
+        // instructions, so it always sees the raw query.
+        val vectorItems = runCatching {
+            vectorMatch(ideas, instructionQuery(query, instruction), embedder)
+        }.getOrElse { return keyword }
         if (vectorItems.isEmpty()) return keyword
         return mergeResults(keyword, vectorItems)
     }
@@ -184,7 +189,11 @@ class AiMatchingService(
      * crash), which sent users back to settings when the model was already
      * selected and installed.
      */
-    suspend fun explainMatch(detail: IdeaNoteWithDetails, query: String): String {
+    suspend fun explainMatch(
+        detail: IdeaNoteWithDetails,
+        query: String,
+        instruction: String = ""
+    ): String {
         val llm = activeLlm()
             ?: throw IllegalStateException(llmFailureReason())
         val prompt = buildString {
@@ -192,6 +201,13 @@ class AiMatchingService(
                 "You are a songwriting assistant. Answer in ONE short sentence " +
                     "(under 25 words). Do not invent lyrics. Do not quote the idea back."
             )
+            if (instruction.isNotBlank()) {
+                appendLine()
+                appendLine(
+                    "The songwriter's matching instruction: \"$instruction\" " +
+                        "Judge the fit against that instruction."
+                )
+            }
             appendLine()
             appendLine("The songwriter is writing about: \"$query\"")
             appendLine()
@@ -388,6 +404,28 @@ class AiMatchingService(
         /** Minimum cosine similarity for a vector match to surface. */
         const val VECTOR_THRESHOLD = 0.35f
         const val MAX_VECTOR_MATCHES = 25
+
+        /**
+         * Effective matching instruction: the per-song instruction wins when
+         * it is set; otherwise the global instruction from AI settings;
+         * otherwise none (""). Pure — covered by unit tests.
+         */
+        fun resolveInstruction(songInstruction: String?, globalInstruction: String): String {
+            if (!songInstruction.isNullOrBlank()) return songInstruction.trim()
+            return globalInstruction.trim()
+        }
+
+        /**
+         * Query text for the embedder with the instruction folded in.
+         * Instruction-tuned embedders (EmbeddingGemma) are built for exactly
+         * this; for the others the instruction still steers the query
+         * representation. Blank instruction returns the query unchanged.
+         * Pure — covered by unit tests.
+         */
+        fun instructionQuery(query: String, instruction: String): String {
+            if (instruction.isBlank()) return query
+            return "Instruction: ${instruction.trim()}\n\n$query"
+        }
 
         /**
          * Document text for embedding, in the EmbeddingGemma 2 format

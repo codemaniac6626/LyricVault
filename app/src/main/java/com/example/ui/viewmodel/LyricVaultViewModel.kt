@@ -96,6 +96,7 @@ data class AiUiState(
     val backend: AiSettings.BackendPreference = AiSettings.BackendPreference.AUTO,
     val wifiOnly: Boolean = true,
     val geminiModel: String = GeminiClient.DEFAULT_LLM_MODEL,
+    val customInstruction: String = "",
     val hasGeminiKey: Boolean = false,
     val keyStorageEncrypted: Boolean = true,
     val downloads: Map<String, AiDownloadState> = emptyMap(),
@@ -298,11 +299,22 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
     suspend fun computeMatches(
         ideas: List<IdeaNoteWithDetails>,
         query: String,
-        mode: MatchMode
+        mode: MatchMode,
+        songInstruction: String? = null
     ): VaultMatchResult = withContext(Dispatchers.Default) {
         // Hybrid: keyword matching always runs; vector search layers on top
-        // when AI is enabled and an embedder is ready.
-        aiService.match(ideas = ideas, query = query, mode = mode)
+        // when AI is enabled and an embedder is ready. The instruction
+        // steers the vector side (and explanations); a per-song instruction
+        // overrides the global one for this song.
+        aiService.match(
+            ideas = ideas,
+            query = query,
+            mode = mode,
+            instruction = AiMatchingService.resolveInstruction(
+                songInstruction,
+                aiSettings.customInstruction
+            )
+        )
     }
 
     // ---- AI matching: settings, downloads, Gemini key, explanations ----
@@ -323,6 +335,7 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 backend = aiSettings.backendPreference,
                 wifiOnly = aiSettings.wifiOnlyDownloads,
                 geminiModel = aiSettings.geminiModel,
+                customInstruction = aiSettings.customInstruction,
                 hasGeminiKey = apiKeyStore.hasGeminiKey(),
                 keyStorageEncrypted = apiKeyStore.storageEncrypted,
                 downloads = downloads,
@@ -555,6 +568,12 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         refreshAiState()
     }
 
+    /** Global matching instruction. Trimmed + capped by AiSettings. */
+    fun setCustomInstruction(text: String) {
+        aiSettings.customInstruction = text
+        refreshAiState()
+    }
+
     fun saveGeminiKey(key: String) {
         if (key.isBlank()) {
             _snackbarMessage.value = "Paste your Gemini API key first."
@@ -616,13 +635,20 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun explainMatch(ideaId: Long, query: String) {
+    fun explainMatch(ideaId: Long, query: String, songInstruction: String? = null) {
         _explanations.value = _explanations.value + (ideaId to ExplanationState.Loading)
         viewModelScope.launch {
             val result = runCatching {
                 val detail = repository.getIdeaOnce(ideaId)
                     ?: throw IllegalStateException("That idea is gone.")
-                aiService.explainMatch(detail, query)
+                aiService.explainMatch(
+                    detail,
+                    query,
+                    AiMatchingService.resolveInstruction(
+                        songInstruction,
+                        aiSettings.customInstruction
+                    )
+                )
             }
             _explanations.value = _explanations.value + (
                 ideaId to result.fold(

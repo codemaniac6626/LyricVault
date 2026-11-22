@@ -77,6 +77,35 @@ routing from Dec 1, 2026), so the picker offers `gemini-3.8-flash` (default),
 `gemini-embedding-001`. The free tier needs no card; limits are per-model
 RPM/TPM/RPD shown in AI Studio.
 
+## Custom matching instruction (issue #5)
+
+The user can write a free-text instruction telling the AI how to judge
+matches — e.g. "Match by mood and imagery, not rhyme". Two levels:
+
+- **Global** — set in AI settings (`AiSettings.customInstruction`, capped at
+  500 chars). Applies to every song.
+- **Per-song** — stored on the song (`SongEntity.customInstruction`, nullable;
+  DB v3, `MIGRATION_2_3` adds the column). Overrides the global instruction
+  for that song when set; blank/null falls back to the global one. The field
+  lives in the songwriting screen's vibe card and round-trips through JSON
+  backup (old backups without the key import as null).
+
+Resolution is `AiMatchingService.resolveInstruction(song, global)` (pure,
+unit-tested). The effective instruction steers two things:
+
+1. **Vector matching** — folded into the embedded query
+   (`instructionQuery()`: `"Instruction: …\n\n<query>"`). Instruction-tuned
+   embedders (EmbeddingGemma) are built for exactly this; for MiniLM/Gemini
+   it still steers the query representation. The vault is NOT re-embedded:
+   the instruction rides on the query side only. Keyword matching is
+   term-based and cannot take instructions, so it always sees the raw query.
+2. **"Why this fits" explanations** — injected into the LLM prompt, so the
+   explanation judges the fit against the user's instruction.
+
+The songwriting screen shows the instruction actually in effect under the
+match-mode chips ("Matching with instruction: …"), and matches re-run live
+when either the per-song or the global instruction changes.
+
 ## Known limits
 
 - **Runtime behavior on a real phone is unverified from this VM.** The code
