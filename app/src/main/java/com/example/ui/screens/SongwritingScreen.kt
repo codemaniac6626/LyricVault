@@ -107,6 +107,9 @@ fun SongwritingScreen(
     var songTitle by remember { mutableStateOf("") }
     var vibeDescription by remember { mutableStateOf("") }
     var lyricsField by remember { mutableStateOf(TextFieldValue("")) }
+    // Per-song matching instruction: overrides the global one from AI
+    // settings for this song; blank = use the global instruction.
+    var songInstruction by remember { mutableStateOf("") }
 
     // 0 = Write Lyrics, 1 = Vault Suggestions (used on compact phone screens)
     var activeCompactTab by remember { mutableIntStateOf(0) }
@@ -129,6 +132,7 @@ fun SongwritingScreen(
                 songTitle = loaded.title
                 vibeDescription = loaded.vibeDescription
                 lyricsField = TextFieldValue(loaded.lyrics)
+                songInstruction = loaded.customInstruction ?: ""
             }
         }
         isLoaded = true
@@ -177,17 +181,31 @@ fun SongwritingScreen(
     val explanations by viewModel.explanations.collectAsState()
     val llmConfigured = aiUiState.enabled && aiUiState.llmId != com.example.ai.AiSettings.LLM_NONE
 
-    LaunchedEffect(vibeDescription, lyricsField.text, specificLineQuery, matchMode, allIdeas) {
+    LaunchedEffect(
+        vibeDescription, lyricsField.text, specificLineQuery, matchMode, allIdeas,
+        songInstruction, aiUiState.customInstruction
+    ) {
         delay(180L)
         matchResult = viewModel.computeMatches(
             ideas = allIdeas,
             query = effectiveQuery(),
-            mode = matchMode
+            mode = matchMode,
+            songInstruction = songInstruction
+        )
+    }
+
+    // The instruction actually in effect for this song (per-song wins,
+    // else the global one). Shown in the suggestions pane.
+    val activeInstruction = remember(songInstruction, aiUiState.customInstruction) {
+        com.example.ai.AiMatchingService.resolveInstruction(
+            songInstruction,
+            aiUiState.customInstruction
         )
     }
 
     fun persistSong(then: (Long) -> Unit = {}) {
-        val hasAny = songTitle.isNotBlank() || vibeDescription.isNotBlank() || lyricsField.text.isNotBlank()
+        val hasAny = songTitle.isNotBlank() || vibeDescription.isNotBlank() ||
+            lyricsField.text.isNotBlank() || songInstruction.isNotBlank()
         if (!hasAny && currentSongId == 0L) {
             then(0L)
             return
@@ -197,6 +215,7 @@ fun SongwritingScreen(
             title = songTitle.trim(),
             vibeDescription = vibeDescription.trim(),
             lyrics = lyricsField.text,
+            customInstruction = songInstruction.trim().ifBlank { null },
             createdAt = createdAt,
             updatedAt = System.currentTimeMillis()
         )
@@ -345,6 +364,11 @@ fun SongwritingScreen(
                         onTitleChange = { songTitle = it },
                         vibeDescription = vibeDescription,
                         onVibeChange = { vibeDescription = it },
+                        customInstruction = songInstruction,
+                        onCustomInstructionChange = {
+                            songInstruction = it.take(com.example.ai.AiSettings.MAX_INSTRUCTION_CHARS)
+                        },
+                        globalInstruction = aiUiState.customInstruction,
                         lyricsField = lyricsField,
                         onLyricsChange = { lyricsField = it },
                         highlightedText = highlightedText,
@@ -376,8 +400,15 @@ fun SongwritingScreen(
                         onOpenLinePicker = { showLinePickerDialog = true },
                         aiEnabled = aiUiState.enabled,
                         llmConfigured = llmConfigured,
+                        activeInstruction = activeInstruction,
                         explanations = explanations,
-                        onExplain = { id -> viewModel.explainMatch(id, effectiveQuery()) },
+                        onExplain = { id ->
+                            viewModel.explainMatch(
+                                id,
+                                effectiveQuery(),
+                                songInstruction = songInstruction
+                            )
+                        },
                         onOpenAiSettings = onOpenAiSettings,
                         modifier = Modifier
                             .weight(0.9f)
@@ -435,6 +466,11 @@ fun SongwritingScreen(
                             onTitleChange = { songTitle = it },
                             vibeDescription = vibeDescription,
                             onVibeChange = { vibeDescription = it },
+                            customInstruction = songInstruction,
+                            onCustomInstructionChange = {
+                                songInstruction = it.take(com.example.ai.AiSettings.MAX_INSTRUCTION_CHARS)
+                            },
+                            globalInstruction = aiUiState.customInstruction,
                             lyricsField = lyricsField,
                             onLyricsChange = { lyricsField = it },
                             highlightedText = highlightedText,
@@ -470,8 +506,15 @@ fun SongwritingScreen(
                             onOpenLinePicker = { showLinePickerDialog = true },
                             aiEnabled = aiUiState.enabled,
                             llmConfigured = llmConfigured,
+                            activeInstruction = activeInstruction,
                             explanations = explanations,
-                            onExplain = { id -> viewModel.explainMatch(id, effectiveQuery()) },
+                            onExplain = { id ->
+                                viewModel.explainMatch(
+                                    id,
+                                    effectiveQuery(),
+                                    songInstruction = songInstruction
+                                )
+                            },
                             onOpenAiSettings = onOpenAiSettings,
                             modifier = Modifier
                                 .weight(1f)
@@ -563,6 +606,9 @@ private fun LyricEditorPane(
     onTitleChange: (String) -> Unit,
     vibeDescription: String,
     onVibeChange: (String) -> Unit,
+    customInstruction: String,
+    onCustomInstructionChange: (String) -> Unit,
+    globalInstruction: String,
     lyricsField: TextFieldValue,
     onLyricsChange: (TextFieldValue) -> Unit,
     highlightedText: String,
@@ -632,6 +678,43 @@ private fun LyricEditorPane(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("song_vibe_input")
+                )
+
+                OutlinedTextField(
+                    value = customInstruction,
+                    onValueChange = onCustomInstructionChange,
+                    // Short label on purpose (see the vibe field above):
+                    // the full wording lives in the supporting text.
+                    label = { Text("Matching instruction", maxLines = 1) },
+                    placeholder = {
+                        Text(
+                            if (globalInstruction.isNotBlank()) {
+                                "Overrides your global instruction for this song…"
+                            } else {
+                                "e.g. Match by mood and imagery, not rhyme…"
+                            }
+                        )
+                    },
+                    supportingText = {
+                        Text(
+                            if (customInstruction.isBlank() && globalInstruction.isNotBlank()) {
+                                "Blank — using your global instruction from AI settings."
+                            } else {
+                                "For this song only. Steers AI matching + “Why this fits”."
+                            }
+                        )
+                    },
+                    minLines = 1,
+                    maxLines = 3,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("song_instruction_input")
                 )
             }
         }
@@ -776,6 +859,7 @@ private fun SuggestionsPane(
     onOpenLinePicker: () -> Unit,
     aiEnabled: Boolean,
     llmConfigured: Boolean,
+    activeInstruction: String,
     explanations: Map<Long, ExplanationState>,
     onExplain: (Long) -> Unit,
     onOpenAiSettings: () -> Unit,
@@ -874,6 +958,31 @@ private fun SuggestionsPane(
                             tag = "match_mode_line",
                             modifier = Modifier.weight(1f)
                         )
+                    }
+
+                    // The instruction actually steering these matches
+                    // (per-song, else the global one from AI settings).
+                    if (aiEnabled && activeInstruction.isNotBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Matching with instruction: “" +
+                                    activeInstruction.take(80) +
+                                    (if (activeInstruction.length > 80) "…" else "") + "”",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
                     if (matchMode == MatchMode.SPECIFIC_LINE) {

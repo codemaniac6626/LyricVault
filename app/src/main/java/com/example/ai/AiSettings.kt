@@ -48,14 +48,29 @@ class AiSettings(context: Context) {
             ?: GeminiClient.DEFAULT_LLM_MODEL
         set(value) = prefs.edit().putString(KEY_GEMINI_MODEL, value.trim()).apply()
 
+    /**
+     * Global matching instruction: free text steering how AI matches ideas
+     * (vector search + "Why this fits" explanations). Blank = no instruction.
+     * A per-song instruction on the song overrides this for that song.
+     * Not trimmed here: trimming happens at use time (resolveInstruction),
+     * so typing a trailing space mid-sentence is not eaten by the field.
+     */
+    var customInstruction: String
+        get() = prefs.getString(KEY_CUSTOM_INSTRUCTION, "") ?: ""
+        set(value) = prefs.edit()
+            .putString(KEY_CUSTOM_INSTRUCTION, value.take(MAX_INSTRUCTION_CHARS)).apply()
+
     companion object {
         const val PREFS_NAME = "lyric_vault_ai_prefs"
         const val LLM_NONE = "none"
+        /** Instructions stay short: they ride inside every query embedding. */
+        const val MAX_INSTRUCTION_CHARS = 500
         private const val KEY_AI_ENABLED = "ai_enabled"
         private const val KEY_EMBEDDER_ID = "embedder_id"
         private const val KEY_LLM_ID = "llm_id"
         private const val KEY_BACKEND = "backend"
         private const val KEY_WIFI_ONLY = "wifi_only"
         private const val KEY_GEMINI_MODEL = "gemini_model"
+        private const val KEY_CUSTOM_INSTRUCTION = "custom_instruction"
     }
 }

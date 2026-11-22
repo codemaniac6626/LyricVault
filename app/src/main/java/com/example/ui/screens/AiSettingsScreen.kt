@@ -39,6 +39,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -211,6 +212,48 @@ fun AiSettingsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // ---- Matching instruction ----
+            item(key = "matching_instruction") {
+                AiSectionCard(title = "Matching instruction") {
+                    Text(
+                        text = "Tell the AI how to judge matches — for every song. " +
+                            "It steers vector matching and “Why this fits” explanations. " +
+                            "A per-song instruction in the songwriting screen overrides " +
+                            "this for that song.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    var instructionText by remember(aiState.customInstruction) {
+                        mutableStateOf(aiState.customInstruction)
+                    }
+                    OutlinedTextField(
+                        value = instructionText,
+                        onValueChange = {
+                            instructionText = it.take(AiSettings.MAX_INSTRUCTION_CHARS)
+                            viewModel.setCustomInstruction(instructionText)
+                        },
+                        label = { Text("How should matches be chosen?", maxLines = 1) },
+                        placeholder = {
+                            Text("e.g. Match by mood and imagery, not just similar words…")
+                        },
+                        supportingText = {
+                            Text("${instructionText.length}/${AiSettings.MAX_INSTRUCTION_CHARS}")
+                        },
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("global_instruction_input")
+                    )
                 }
             }
 

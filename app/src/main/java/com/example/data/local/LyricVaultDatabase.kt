@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IdeaUsageEntity::class,
         IdeaEmbeddingEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class LyricVaultDatabase : RoomDatabase() {
@@ -50,13 +50,24 @@ abstract class LyricVaultDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v2 -> v3: adds the nullable `customInstruction` column to songs
+         * (per-song matching instruction; null = use the global one).
+         * ALTER TABLE keeps every existing song row intact.
+         */
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `songs` ADD COLUMN `customInstruction` TEXT")
+            }
+        }
+
         fun getInstance(context: Context): LyricVaultDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     LyricVaultDatabase::class.java,
                     "lyric_vault.db"
-                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
             }
         }
     }

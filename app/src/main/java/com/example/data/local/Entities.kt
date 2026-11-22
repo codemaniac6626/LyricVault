@@ -52,6 +52,11 @@ data class SongEntity(
     val title: String = "",
     val vibeDescription: String = "",
     val lyrics: String = "",
+    /**
+     * Per-song matching instruction. Null or blank = fall back to the global
+     * instruction in AI settings; set = overrides it for this song only.
+     */
+    val customInstruction: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
