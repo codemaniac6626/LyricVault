@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +37,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
@@ -72,6 +80,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -80,15 +89,21 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import com.example.data.local.BlockType
 import com.example.data.local.IdeaNoteWithDetails
+import com.example.data.local.SongAudioBlockEntity
 import com.example.data.local.SongEntity
 import com.example.domain.audio.PlaybackState
+import com.example.domain.audio.RecordingState
 import com.example.domain.matching.MatchMode
 import com.example.domain.matching.SplitMatchResult
 import com.example.domain.matching.VaultMatchItem
 import com.example.domain.matching.VaultMatchResult
 import com.example.ui.components.AudioTileCard
+import com.example.ui.components.LiveRecordingBar
 import com.example.ui.components.MatchScoreBadge
 import com.example.ui.components.UsageBadge
 import com.example.ui.viewmodel.ExplanationState
@@ -101,6 +116,7 @@ fun SongwritingScreen(
     songId: Long?,
     allIdeas: List<IdeaNoteWithDetails>,
     playbackState: PlaybackState,
+    recordingState: RecordingState,
     viewModel: LyricVaultViewModel,
     onOpenIdea: (Long) -> Unit,
     onOpenAiSettings: () -> Unit,
@@ -123,6 +139,55 @@ fun SongwritingScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showLinePickerDialog by remember { mutableStateOf(false) }
     var isLoaded by remember { mutableStateOf(false) }
+    var isLyricsFullscreen by remember { mutableStateOf(false) }
+    var permissionDeniedNotice by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+
+    // Audio blocks attached to this song — recorded here, or brought in
+    // from vault ideas. Empty until the song exists (id 0 has no blocks).
+    val songAudioBlocks by remember(currentSongId) {
+        viewModel.songAudioBlocks(currentSongId)
+    }.collectAsState(initial = emptyList())
+
+    val existingIdeaIds = remember(allIdeas) { allIdeas.map { it.idea.id }.toSet() }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            permissionDeniedNotice = false
+            viewModel.startRecordingAudio()
+        } else {
+            permissionDeniedNotice = true
+        }
+    }
+
+    fun requestOrStartRecording() {
+        val hasPerm = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPerm) {
+            permissionDeniedNotice = false
+            viewModel.startRecordingAudio()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun stopRecordingAndAttach() {
+        val recorded = viewModel.stopRecordingAudio() ?: return
+        // An audio block needs a saved song to belong to, so force-persist
+        // first — a brand-new song may still be completely blank here.
+        persistSong(force = true) { savedId ->
+            if (savedId > 0L) {
+                viewModel.addRecordedAudioToSong(savedId, recorded)
+            } else {
+                viewModel.deleteAudioFile(recorded.filePath)
+            }
+        }
+    }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -207,10 +272,10 @@ fun SongwritingScreen(
         )
     }
 
-    fun persistSong(then: (Long) -> Unit = {}) {
+    fun persistSong(force: Boolean = false, then: (Long) -> Unit = {}) {
         val hasAny = songTitle.isNotBlank() || vibeDescription.isNotBlank() ||
             lyricsField.text.isNotBlank() || songInstruction.isNotBlank()
-        if (!hasAny && currentSongId == 0L) {
+        if (!hasAny && currentSongId == 0L && !force) {
             then(0L)
             return
         }
@@ -229,7 +294,7 @@ fun SongwritingScreen(
         }
     }
 
-    fun markIdeaUsedHere(ideaId: Long, alsoInsertText: String? = null) {
+    fun markIdeaUsedHere(ideaId: Long, alsoInsertText: String? = null, withAudio: Boolean = false) {
         if (!alsoInsertText.isNullOrBlank()) {
             val currentText = lyricsField.text
             val separator = when {
@@ -249,6 +314,13 @@ fun SongwritingScreen(
                 songId = savedSongId,
                 songTitle = songTitle.ifBlank { "Untitled Song" }
             )
+            if (withAudio) {
+                // Insert & Use also brings the idea's audio into the song
+                // as its own labelled block(s) below the lyrics.
+                allIdeas.firstOrNull { it.idea.id == ideaId }?.let { detail ->
+                    viewModel.addIdeaAudioToSong(savedSongId, detail)
+                }
+            }
         }
     }
 
@@ -257,6 +329,9 @@ fun SongwritingScreen(
         // open over the list screen after navigating back.
         keyboardController?.hide()
         focusManager.clearFocus()
+        if (recordingState.isRecording) {
+            viewModel.cancelRecordingAudio()
+        }
         viewModel.audioPlayer.stop()
         persistSong { onNavigateBack() }
     }
@@ -382,6 +457,20 @@ fun SongwritingScreen(
                             matchMode = MatchMode.SPECIFIC_LINE
                         },
                         onOpenLinePicker = { showLinePickerDialog = true },
+                        songAudioBlocks = songAudioBlocks,
+                        existingIdeaIds = existingIdeaIds,
+                        playbackState = playbackState,
+                        recordingState = recordingState,
+                        permissionDeniedNotice = permissionDeniedNotice,
+                        onRecordMelody = { requestOrStartRecording() },
+                        onStopRecording = { stopRecordingAndAttach() },
+                        onCancelRecording = { viewModel.cancelRecordingAudio() },
+                        onAudioLabelChange = { block, label -> viewModel.updateSongAudioLabel(block, label) },
+                        onDeleteAudioBlock = { block -> viewModel.deleteSongAudioBlock(block) },
+                        onTogglePlay = { viewModel.audioPlayer.togglePlay(it) },
+                        onSeek = { p, f -> viewModel.audioPlayer.seekTo(p, f) },
+                        onOpenIdea = onOpenIdea,
+                        onOpenFullscreen = { isLyricsFullscreen = true },
                         modifier = Modifier
                             .weight(1.1f)
                             .fillMaxHeight()
@@ -399,7 +488,7 @@ fun SongwritingScreen(
                         onTogglePlay = { viewModel.audioPlayer.togglePlay(it) },
                         onSeek = { p, f -> viewModel.audioPlayer.seekTo(p, f) },
                         onMarkUsed = { id -> markIdeaUsedHere(id, alsoInsertText = null) },
-                        onInsertAndMarkUsed = { id, snippet -> markIdeaUsedHere(id, alsoInsertText = snippet) },
+                        onInsertAndMarkUsed = { id, snippet -> markIdeaUsedHere(id, alsoInsertText = snippet, withAudio = true) },
                         onOpenIdea = onOpenIdea,
                         onOpenLinePicker = { showLinePickerDialog = true },
                         aiEnabled = aiUiState.enabled,
@@ -485,6 +574,20 @@ fun SongwritingScreen(
                                 activeCompactTab = 1
                             },
                             onOpenLinePicker = { showLinePickerDialog = true },
+                            songAudioBlocks = songAudioBlocks,
+                            existingIdeaIds = existingIdeaIds,
+                            playbackState = playbackState,
+                            recordingState = recordingState,
+                            permissionDeniedNotice = permissionDeniedNotice,
+                            onRecordMelody = { requestOrStartRecording() },
+                            onStopRecording = { stopRecordingAndAttach() },
+                            onCancelRecording = { viewModel.cancelRecordingAudio() },
+                            onAudioLabelChange = { block, label -> viewModel.updateSongAudioLabel(block, label) },
+                            onDeleteAudioBlock = { block -> viewModel.deleteSongAudioBlock(block) },
+                            onTogglePlay = { viewModel.audioPlayer.togglePlay(it) },
+                            onSeek = { p, f -> viewModel.audioPlayer.seekTo(p, f) },
+                            onOpenIdea = onOpenIdea,
+                            onOpenFullscreen = { isLyricsFullscreen = true },
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
@@ -503,7 +606,7 @@ fun SongwritingScreen(
                             onSeek = { p, f -> viewModel.audioPlayer.seekTo(p, f) },
                             onMarkUsed = { id -> markIdeaUsedHere(id, alsoInsertText = null) },
                             onInsertAndMarkUsed = { id, snippet ->
-                                markIdeaUsedHere(id, alsoInsertText = snippet)
+                                markIdeaUsedHere(id, alsoInsertText = snippet, withAudio = true)
                                 activeCompactTab = 0
                             },
                             onOpenIdea = onOpenIdea,
@@ -602,7 +705,75 @@ fun SongwritingScreen(
             }
         )
     }
+
+    if (isLyricsFullscreen) {
+        // Distraction-free mode: nothing on screen but the lyrics sheet.
+        Dialog(
+            onDismissRequest = { isLyricsFullscreen = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "LYRICS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(
+                            onClick = { isLyricsFullscreen = false },
+                            modifier = Modifier.testTag("lyrics_fullscreen_close_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FullscreenExit,
+                                contentDescription = "Exit full screen"
+                            )
+                        }
+                    }
+
+                    BasicTextField(
+                        value = lyricsField,
+                        onValueChange = { lyricsField = it },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .testTag("song_lyrics_input_fullscreen"),
+                        decorationBox = { inner ->
+                            if (lyricsField.text.isBlank()) {
+                                Text(
+                                    text = "Start writing your verses, pre-chorus, or hook...",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                            inner()
+                        }
+                    )
+                }
+            }
+        }
+    }
 }
+
 
 @Composable
 private fun LyricEditorPane(
@@ -619,6 +790,20 @@ private fun LyricEditorPane(
     cursorLine: String,
     onMatchSpecificLine: (String) -> Unit,
     onOpenLinePicker: () -> Unit,
+    songAudioBlocks: List<SongAudioBlockEntity>,
+    existingIdeaIds: Set<Long>,
+    playbackState: PlaybackState,
+    recordingState: RecordingState,
+    permissionDeniedNotice: Boolean,
+    onRecordMelody: () -> Unit,
+    onStopRecording: () -> Unit,
+    onCancelRecording: () -> Unit,
+    onAudioLabelChange: (SongAudioBlockEntity, String) -> Unit,
+    onDeleteAudioBlock: (SongAudioBlockEntity) -> Unit,
+    onTogglePlay: (String) -> Unit,
+    onSeek: (String, Float) -> Unit,
+    onOpenIdea: (Long) -> Unit,
+    onOpenFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -816,6 +1001,15 @@ private fun LyricEditorPane(
                             Text("Pick Line to Match", style = MaterialTheme.typography.labelSmall)
                         }
                     }
+                    IconButton(
+                        onClick = onOpenFullscreen,
+                        modifier = Modifier.testTag("lyrics_fullscreen_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Fullscreen,
+                            contentDescription = "Write lyrics in full screen"
+                        )
+                    }
                 }
 
                 BasicTextField(
@@ -841,6 +1035,252 @@ private fun LyricEditorPane(
                     }
                 )
             }
+        }
+
+        // Melody blocks for this song — recorded here, or brought in from
+        // vault ideas via Insert & Use. Each block sits below the lyrics
+        // with its own small label above the player.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "MELODY BLOCKS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (songAudioBlocks.isNotEmpty()) {
+                    Text(
+                        text = "${songAudioBlocks.size} attached",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (permissionDeniedNotice || recordingState.errorMessage != null) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        text = recordingState.errorMessage
+                            ?: "Microphone permission is required to record a melody for this song. Tap Record Melody again to allow.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    )
+                }
+            }
+
+            if (recordingState.isRecording) {
+                LiveRecordingBar(
+                    recordingState = recordingState,
+                    onStopAndSave = onStopRecording,
+                    onCancel = onCancelRecording
+                )
+            } else {
+                Button(
+                    onClick = onRecordMelody,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary,
+                        contentColor = MaterialTheme.colorScheme.onTertiary
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("song_record_melody_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Record Melody",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (songAudioBlocks.isEmpty() && !recordingState.isRecording) {
+                Text(
+                    text = "No audio attached yet. Record a melody for this song, or use Insert & Use on a Vault Match that has one — its audio lands here too.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            songAudioBlocks.forEach { block ->
+                SongAudioBlockItem(
+                    block = block,
+                    sourceIdeaExists = block.sourceIdeaId != null && block.sourceIdeaId in existingIdeaIds,
+                    playbackState = playbackState,
+                    onTogglePlay = onTogglePlay,
+                    onSeek = onSeek,
+                    onLabelChange = onAudioLabelChange,
+                    onDelete = onDeleteAudioBlock,
+                    onOpenIdea = onOpenIdea
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One audio block attached to a song: a small label textbox above the
+ * player. Blocks brought in from a vault idea start out labelled with the
+ * idea's name, and tapping that name opens the idea itself; the pencil
+ * switches the label into edit mode (for idea-linked blocks, plain text
+ * otherwise — the name stays tappable only while it is a link).
+ */
+@Composable
+private fun SongAudioBlockItem(
+    block: SongAudioBlockEntity,
+    sourceIdeaExists: Boolean,
+    playbackState: PlaybackState,
+    onTogglePlay: (String) -> Unit,
+    onSeek: (String, Float) -> Unit,
+    onLabelChange: (SongAudioBlockEntity, String) -> Unit,
+    onDelete: (SongAudioBlockEntity) -> Unit,
+    onOpenIdea: (Long) -> Unit
+) {
+    var editingLabel by remember(block.id) { mutableStateOf(false) }
+    var labelDraft by remember(block.id) { mutableStateOf(block.label) }
+    val linkedIdeaId = block.sourceIdeaId?.takeIf { sourceIdeaExists }
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (editingLabel) {
+                    BasicTextField(
+                        value = labelDraft,
+                        onValueChange = { labelDraft = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("song_audio_label_input_${block.id}"),
+                        decorationBox = { inner ->
+                            if (labelDraft.isBlank()) {
+                                Text(
+                                    text = "Label this audio…",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                )
+                            }
+                            inner()
+                        }
+                    )
+                    IconButton(
+                        onClick = {
+                            onLabelChange(block, labelDraft.trim())
+                            editingLabel = false
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = "Save label",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        text = block.label.ifBlank { "Untitled audio" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (linkedIdeaId != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(
+                                if (linkedIdeaId != null) {
+                                    Modifier.clickable { onOpenIdea(linkedIdeaId) }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .testTag("song_audio_label_${block.id}")
+                    )
+                    IconButton(
+                        onClick = {
+                            labelDraft = block.label
+                            editingLabel = true
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Edit label",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = { onDelete(block) },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DeleteOutline,
+                        contentDescription = "Delete audio block",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            if (linkedIdeaId != null && !editingLabel) {
+                Text(
+                    text = "From your vault idea — tap the name to open it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            AudioTileCard(
+                audioPath = block.audioFilePath,
+                durationMs = block.audioDurationMs,
+                caption = "",
+                playbackState = playbackState,
+                onTogglePlay = onTogglePlay,
+                onSeek = onSeek,
+                editable = false
+            )
         }
     }
 }

@@ -384,6 +384,7 @@ fun LyricVaultApp(
                             songId = if (id > 0L) id else null,
                             allIdeas = allIdeas,
                             playbackState = playbackState,
+                            recordingState = recordingState,
                             viewModel = viewModel,
                             onOpenIdea = { ideaId ->
                                 navController.navigate(Routes.ideaEditor(ideaId = ideaId, autoRecord = false))

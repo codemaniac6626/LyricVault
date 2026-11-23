@@ -72,6 +72,24 @@ interface LyricVaultDao {
     @Query("DELETE FROM songs WHERE id = :songId")
     suspend fun deleteSongById(songId: Long)
 
+    @Query("SELECT * FROM song_audio_blocks WHERE songId = :songId ORDER BY orderIndex ASC, createdAt ASC")
+    fun observeSongAudioBlocks(songId: Long): Flow<List<SongAudioBlockEntity>>
+
+    @Query("SELECT * FROM song_audio_blocks WHERE songId = :songId ORDER BY orderIndex ASC, createdAt ASC")
+    suspend fun getSongAudioBlocksOnce(songId: Long): List<SongAudioBlockEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSongAudioBlock(block: SongAudioBlockEntity): Long
+
+    @Update
+    suspend fun updateSongAudioBlock(block: SongAudioBlockEntity)
+
+    @Query("DELETE FROM song_audio_blocks WHERE id = :blockId")
+    suspend fun deleteSongAudioBlockById(blockId: Long)
+
+    @Query("SELECT COALESCE(MAX(orderIndex), -1) FROM song_audio_blocks WHERE songId = :songId")
+    suspend fun maxSongAudioOrderIndex(songId: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUsage(usage: IdeaUsageEntity): Long
 

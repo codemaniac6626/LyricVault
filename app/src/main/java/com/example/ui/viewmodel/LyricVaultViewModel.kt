@@ -27,6 +27,7 @@ import com.example.data.local.IdeaBlockEntity
 import com.example.data.local.IdeaNoteEntity
 import com.example.data.local.IdeaNoteWithDetails
 import com.example.data.local.LyricVaultDatabase
+import com.example.data.local.SongAudioBlockEntity
 import com.example.data.local.SongEntity
 import com.example.data.repository.BackupSummary
 import com.example.data.repository.LyricVaultRepository
@@ -40,6 +41,7 @@ import com.example.domain.matching.MatchMode
 import com.example.domain.matching.SplitMatchResult
 import com.example.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -264,6 +266,51 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
             repository.deleteSong(songId)
             _snackbarMessage.value = "Song removed."
             onDeleted()
+        }
+    }
+
+    // ---- Song audio blocks (melodies attached to a song) ----
+
+    fun songAudioBlocks(songId: Long): Flow<List<SongAudioBlockEntity>> =
+        repository.observeSongAudioBlocks(songId)
+
+    fun addRecordedAudioToSong(songId: Long, recorded: RecordedAudioResult) {
+        if (songId <= 0L) return
+        viewModelScope.launch {
+            repository.addSongAudioBlock(
+                songId = songId,
+                label = "",
+                audioFilePath = recorded.filePath,
+                audioDurationMs = recorded.durationMs
+            )
+            _snackbarMessage.value = "Melody added to this song."
+        }
+    }
+
+    fun updateSongAudioLabel(block: SongAudioBlockEntity, label: String) {
+        viewModelScope.launch {
+            repository.updateSongAudioBlock(block.copy(label = label))
+        }
+    }
+
+    fun deleteSongAudioBlock(block: SongAudioBlockEntity) {
+        viewModelScope.launch {
+            if (playbackState.value.activePath == block.audioFilePath) {
+                audioPlayer.stop()
+            }
+            repository.deleteSongAudioBlock(block)
+            _snackbarMessage.value = "Audio block removed from song."
+        }
+    }
+
+    /**
+     * Copies the idea's audio into the song as song-owned blocks labelled
+     * with the idea's name (see LyricVaultRepository.copyIdeaAudioIntoSong).
+     */
+    fun addIdeaAudioToSong(songId: Long, idea: IdeaNoteWithDetails) {
+        if (songId <= 0L) return
+        viewModelScope.launch {
+            repository.copyIdeaAudioIntoSong(songId, idea)
         }
     }
 

@@ -12,10 +12,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IdeaNoteEntity::class,
         IdeaBlockEntity::class,
         SongEntity::class,
+        SongAudioBlockEntity::class,
         IdeaUsageEntity::class,
         IdeaEmbeddingEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class LyricVaultDatabase : RoomDatabase() {
@@ -61,13 +62,41 @@ abstract class LyricVaultDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4: adds the song_audio_blocks table (audio clips attached
+         * to a song, each with a label and an optional source-idea link).
+         * New table only — no existing data is touched. The CREATE TABLE
+         * must match Room's expected schema for SongAudioBlockEntity.
+         */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `song_audio_blocks` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`songId` INTEGER NOT NULL, " +
+                        "`orderIndex` INTEGER NOT NULL, " +
+                        "`label` TEXT NOT NULL, " +
+                        "`audioFilePath` TEXT NOT NULL, " +
+                        "`audioDurationMs` INTEGER NOT NULL, " +
+                        "`sourceIdeaId` INTEGER, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`songId`) REFERENCES `songs`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_song_audio_blocks_songId` " +
+                        "ON `song_audio_blocks` (`songId`)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): LyricVaultDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     LyricVaultDatabase::class.java,
                     "lyric_vault.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { INSTANCE = it }
             }
         }
     }

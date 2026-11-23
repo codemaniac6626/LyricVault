@@ -7,6 +7,7 @@ import com.example.data.local.IdeaNoteEntity
 import com.example.data.local.IdeaNoteWithDetails
 import com.example.data.local.IdeaUsageEntity
 import com.example.data.local.LyricVaultDao
+import com.example.data.local.SongAudioBlockEntity
 import com.example.data.local.SongEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -67,8 +68,89 @@ class LyricVaultRepository(
     }
 
     suspend fun deleteSong(songId: Long) {
+        // Rows in song_audio_blocks cascade with the song row, but the
+        // audio files are the song's own copies and need deleting by hand.
+        val audioBlocks = dao.getSongAudioBlocksOnce(songId)
         dao.deleteSongById(songId)
+        withContext(Dispatchers.IO) {
+            audioBlocks.forEach { block ->
+                runCatching { File(block.audioFilePath).delete() }
+            }
+        }
     }
+
+    fun observeSongAudioBlocks(songId: Long): Flow<List<SongAudioBlockEntity>> =
+        dao.observeSongAudioBlocks(songId)
+
+    suspend fun addSongAudioBlock(
+        songId: Long,
+        label: String,
+        audioFilePath: String,
+        audioDurationMs: Long,
+        sourceIdeaId: Long? = null
+    ): Long {
+        val nextIndex = dao.maxSongAudioOrderIndex(songId) + 1
+        return dao.insertSongAudioBlock(
+            SongAudioBlockEntity(
+                songId = songId,
+                orderIndex = nextIndex,
+                label = label,
+                audioFilePath = audioFilePath,
+                audioDurationMs = audioDurationMs,
+                sourceIdeaId = sourceIdeaId
+            )
+        )
+    }
+
+    suspend fun updateSongAudioBlock(block: SongAudioBlockEntity) {
+        dao.updateSongAudioBlock(block)
+    }
+
+    suspend fun deleteSongAudioBlock(block: SongAudioBlockEntity) {
+        dao.deleteSongAudioBlockById(block.id)
+        deleteAudioFileIfExists(block.audioFilePath)
+    }
+
+    /**
+     * Brings every audio block of [idea] into the song as song-owned
+     * blocks, each labelled with the idea's name. The audio files are
+     * COPIED into the clips directory: an idea's files are deleted when
+     * the idea is deleted, so referencing them would leave the song with
+     * dead audio. Returns how many blocks were added.
+     */
+    suspend fun copyIdeaAudioIntoSong(songId: Long, idea: IdeaNoteWithDetails): Int {
+        val audioBlocks = idea.orderedBlocks.filter {
+            it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank()
+        }
+        var added = 0
+        for (block in audioBlocks) {
+            val copyPath = copyAudioFileIntoClipsDir(block.audioFilePath!!) ?: continue
+            addSongAudioBlock(
+                songId = songId,
+                label = idea.displayHeadline,
+                audioFilePath = copyPath,
+                audioDurationMs = block.audioDurationMs,
+                sourceIdeaId = idea.idea.id
+            )
+            added++
+        }
+        return added
+    }
+
+    private suspend fun copyAudioFileIntoClipsDir(sourcePath: String): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val source = File(sourcePath)
+                if (!source.exists()) return@runCatching null
+                val ext = source.extension.ifBlank { "m4a" }
+                val target = File(
+                    audioClipsDirectory(),
+                    "song_copy_${System.currentTimeMillis()}_${System.nanoTime()}.$ext"
+                )
+                source.copyTo(target, overwrite = false)
+                target.absolutePath
+            }.getOrNull()
+        }
 
     suspend fun markIdeaUsedInSong(ideaId: Long, songId: Long, songTitle: String) {
         val now = System.currentTimeMillis()
