@@ -14,6 +14,7 @@
     <LinearLayout
         android:id="@+id/widget_tile_idea"
         android:layout_width="0dp"
+        android:layout_weight="1"
         android:layout_height="match_parent"
         android:layout_marginEnd="6dp"
         android:background="@drawable/widget_tile_background"
@@ -42,6 +43,7 @@
     <LinearLayout
         android:id="@+id/widget_tile_record"
         android:layout_width="0dp"
+        android:layout_weight="1"
         android:layout_height="match_parent"
         android:layout_marginEnd="6dp"
         android:background="@drawable/widget_tile_background"
@@ -70,6 +72,7 @@
     <LinearLayout
         android:id="@+id/widget_tile_song"
         android:layout_width="0dp"
+        android:layout_weight="1"
         android:layout_height="match_parent"
         
         android:background="@drawable/widget_tile_background"
