@@ -250,9 +250,15 @@ fun IdeaEditorScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            if (viewModel.recordingState.value.isRecording) {
-                viewModel.cancelRecordingAudio()
-            }
+            // Do NOT cancel an in-progress recording here. The recording
+            // belongs to the ViewModel, not to this composition, and
+            // onDispose also fires when the composition is torn down and
+            // rebuilt without the user leaving — the widget's deep-link
+            // entry and a microphone-permission activity recreation both
+            // do this, which killed widget-started recordings a fraction
+            // of a second after they began. Real exits are covered:
+            // persistAndExit() (back button / BackHandler) stops the
+            // recording and attaches it to the idea before saving.
             viewModel.audioPlayer.stop()
         }
     }
