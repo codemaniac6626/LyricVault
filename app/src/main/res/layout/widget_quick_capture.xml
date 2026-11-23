@@ -24,10 +24,10 @@
         android:padding="8dp">
 
         <ImageView
+            android:id="@+id/widget_icon_idea"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:contentDescription="@string/widget_tile_idea"
-            android:src="@drawable/ic_widget_idea" />
+            android:contentDescription="@string/widget_tile_idea" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -52,10 +52,10 @@
         android:padding="8dp">
 
         <ImageView
+            android:id="@+id/widget_icon_record"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:contentDescription="@string/widget_tile_record"
-            android:src="@drawable/ic_widget_mic" />
+            android:contentDescription="@string/widget_tile_record" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -80,10 +80,10 @@
         android:padding="8dp">
 
         <ImageView
+            android:id="@+id/widget_icon_song"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:contentDescription="@string/widget_tile_song"
-            android:src="@drawable/ic_widget_song" />
+            android:contentDescription="@string/widget_tile_song" />
 
         <TextView
             android:layout_width="wrap_content"

@@ -61,6 +61,38 @@ data class SongEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+/**
+ * One audio clip attached to a song. Songs keep a single lyrics text, but
+ * audio lives in blocks below it — each with its own small label, mirroring
+ * how idea notes hold audio blocks.
+ *
+ * [sourceIdeaId] is set when the clip was brought in from a vault idea. The
+ * audio file is a copy owned by the song (idea files are deleted with the
+ * idea), so this is only a link for "go to the idea" and may go stale.
+ */
+@Entity(
+    tableName = "song_audio_blocks",
+    foreignKeys = [
+        ForeignKey(
+            entity = SongEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["songId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["songId"])]
+)
+data class SongAudioBlockEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val songId: Long,
+    val orderIndex: Int,
+    val label: String = "",
+    val audioFilePath: String,
+    val audioDurationMs: Long = 0L,
+    val sourceIdeaId: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 @Entity(
     tableName = "idea_usages",
     foreignKeys = [
