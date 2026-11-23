@@ -11,4 +11,9 @@
     <string name="empty_songs_title">Start a new song</string>
     <string name="empty_songs_body">Set the song\'s vibe at the top and start writing. LyricVault continuously scans your own saved ideas offline — never inventing new lyrics — so your momentum never breaks.</string>
     <string name="mic_permission_needed">Microphone permission is needed to record melody tiles inside your idea notes.</string>
+    <string name="widget_name">LyricVault Quick Capture</string>
+    <string name="widget_description">Catch an idea, record a melody, or start a new song in one tap</string>
+    <string name="widget_tile_idea">Catch a quick idea</string>
+    <string name="widget_tile_record">Record a melody</string>
+    <string name="widget_tile_song">Write a song</string>
 </resources>

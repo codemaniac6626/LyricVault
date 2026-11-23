@@ -56,6 +56,7 @@ import com.example.ui.screens.SongsListScreen
 import com.example.ui.screens.SongwritingScreen
 import com.example.ui.screens.VaultScreen
 import com.example.ui.viewmodel.LyricVaultViewModel
+import com.example.widget.WidgetActions
 
 object Routes {
     const val VAULT = "vault"
@@ -122,7 +123,11 @@ private val editorPopExit: AnimatedContentTransitionScope<NavBackStackEntry>.() 
 }
 
 @Composable
-fun LyricVaultApp(viewModel: LyricVaultViewModel) {
+fun LyricVaultApp(
+    viewModel: LyricVaultViewModel,
+    widgetAction: String? = null,
+    onWidgetActionConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -136,6 +141,26 @@ fun LyricVaultApp(viewModel: LyricVaultViewModel) {
     val backupState by viewModel.backupState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
+
+    // Home-screen widget deep links: each tile of the quick-capture widget
+    // launches MainActivity with a WidgetActions action. Run the same
+    // navigation the in-app buttons use, then clear the action so the
+    // navigation fires exactly once per tap.
+    LaunchedEffect(widgetAction) {
+        when (widgetAction) {
+            WidgetActions.NEW_IDEA ->
+                navController.navigate(Routes.ideaEditor(ideaId = 0L, autoRecord = false))
+
+            WidgetActions.RECORD_MELODY ->
+                navController.navigate(Routes.ideaEditor(ideaId = 0L, autoRecord = true))
+
+            WidgetActions.NEW_SONG ->
+                navController.navigate(Routes.songwriting(songId = 0L))
+
+            else -> return@LaunchedEffect
+        }
+        onWidgetActionConsumed()
+    }
 
     LaunchedEffect(snackbarMessage) {
         val msg = snackbarMessage
