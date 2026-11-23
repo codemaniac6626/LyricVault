@@ -36,7 +36,11 @@ class VaultBackupManager(
     // reads/writes it through AiSettings directly. Per-song overrides are
     // SongEntity.customInstruction and already ride along with each song.
     private val aiSettings = AiSettings(context)
-    suspend fun exportToUri(uri: Uri, includeAudioBase64: Boolean): Result<BackupSummary> =
+    suspend fun exportToUri(
+        uri: Uri,
+        includeAudioBase64: Boolean,
+        includeAiPrefs: Boolean = true
+    ): Result<BackupSummary> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val ideas = dao.getAllIdeasOnce()
@@ -48,11 +52,13 @@ class VaultBackupManager(
                     put("formatVersion", 1)
                     put("exportedAt", System.currentTimeMillis())
                     put("includesAudio", includeAudioBase64)
-                    put("globalCustomInstruction", aiSettings.customInstruction)
+                    if (includeAiPrefs) {
+                        put("globalCustomInstruction", aiSettings.customInstruction)
+                    }
                     // AI matching setup, as metadata only — never the
                     // model files themselves. On import these selections
                     // are re-applied and the chosen models re-downloaded.
-                    put(
+                    if (includeAiPrefs) put(
                         "aiSettings",
                         JSONObject().apply {
                             put("aiEnabled", aiSettings.aiEnabled)
@@ -172,7 +178,11 @@ class VaultBackupManager(
             }
         }
 
-    suspend fun importFromUri(uri: Uri): Result<BackupSummary> =
+    suspend fun importFromUri(
+        uri: Uri,
+        includeAudio: Boolean = true,
+        applyAiPrefs: Boolean = true
+    ): Result<BackupSummary> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val rawContent = context.contentResolver.openInputStream(uri)?.use { stream ->
@@ -231,7 +241,7 @@ class VaultBackupManager(
                 // Parent-level AI instruction: restore it when the backup
                 // carries one. Backups written before this key existed
                 // leave the current instruction untouched.
-                if (root.has("globalCustomInstruction")) {
+                if (applyAiPrefs && root.has("globalCustomInstruction")) {
                     aiSettings.customInstruction =
                         root.optString("globalCustomInstruction", "")
                 }
@@ -239,7 +249,7 @@ class VaultBackupManager(
                 // stored in the backup. The ViewModel is told via the
                 // summary so it can re-download the selected models.
                 var appliedAiSettings = false
-                val aiJson = root.optJSONObject("aiSettings")
+                val aiJson = if (applyAiPrefs) root.optJSONObject("aiSettings") else null
                 if (aiJson != null) {
                     if (aiJson.has("aiEnabled")) {
                         aiSettings.aiEnabled = aiJson.optBoolean("aiEnabled", false)
@@ -309,6 +319,9 @@ class VaultBackupManager(
                     for (b in 0 until blocksArray.length()) {
                         val bObj = blocksArray.getJSONObject(b)
                         val type = bObj.optString("blockType", BlockType.TEXT)
+                        // "Leave out audio" import: melody blocks are
+                        // skipped altogether, not restored as dead tiles.
+                        if (type == BlockType.AUDIO && !includeAudio) continue
                         var restoredPath: String? = null
                         if (type == BlockType.AUDIO && bObj.has("audioBase64")) {
                             val b64 = bObj.optString("audioBase64", "")
@@ -372,7 +385,11 @@ class VaultBackupManager(
                 // no-audio export cannot recreate the file). The source
                 // idea link is remapped when that idea was restored too,
                 // and dropped when it was not part of this backup.
-                for ((newSongId, blocksJson) in pendingSongAudio) {
+                for ((newSongId, blocksJson) in if (includeAudio) {
+                    pendingSongAudio
+                } else {
+                    emptyList()
+                }) {
                     for (b in 0 until blocksJson.length()) {
                         val bObj = blocksJson.getJSONObject(b)
                         val b64 = bObj.optString("audioBase64", "")

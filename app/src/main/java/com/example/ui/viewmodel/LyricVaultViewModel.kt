@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.widget.Toast
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -479,7 +480,9 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
      * downloadModel already handles storage checks and the Wi-Fi-only
      * preference — which by now is the restored one.
      */
-    fun redownloadSelectedAiModels() {
+    /** Returns how many model downloads were queued. */
+    fun redownloadSelectedAiModels(): Int {
+        var queued = 0
         listOf(aiSettings.embedderId, aiSettings.llmId)
             .distinct()
             .forEach { modelId ->
@@ -487,8 +490,10 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 if (model.noDownload) return@forEach
                 if (!modelStore.isInstalled(model)) {
                     downloadModel(modelId)
+                    queued++
                 }
             }
+        return queued
     }
 
     private fun observeDownload(model: AiModel, workId: java.util.UUID) {
@@ -509,6 +514,11 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         updateDownload(model.id, AiDownloadState.Installed)
+                        Toast.makeText(
+                            getApplication(),
+                            "AI model installed: ${model.displayName}",
+                            Toast.LENGTH_SHORT
+                        ).show()
                         downloadJobs.remove(model.id)
                         // A fresh embedder means the vault needs embeddings.
                         if (model.kind == com.example.ai.ModelKind.EMBEDDER &&
@@ -741,10 +751,10 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         _explanations.value = emptyMap()
     }
 
-    fun exportVaultJson(uri: Uri, includeAudioBase64: Boolean) {
+    fun exportVaultJson(uri: Uri, includeAudioBase64: Boolean, includeAiPrefs: Boolean) {
         viewModelScope.launch {
             _backupState.value = BackupOperationState.Working
-            val result = backupManager.exportToUri(uri, includeAudioBase64)
+            val result = backupManager.exportToUri(uri, includeAudioBase64, includeAiPrefs)
             result.fold(
                 onSuccess = { summary: BackupSummary ->
                     val audioPart = if (includeAudioBase64) ", ${summary.audioClipsCount} audio clips" else " (text-only JSON)"
@@ -761,10 +771,10 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun importVaultFile(uri: Uri) {
+    fun importVaultFile(uri: Uri, includeAudio: Boolean, applyAiPrefs: Boolean) {
         viewModelScope.launch {
             _backupState.value = BackupOperationState.Working
-            val result = backupManager.importFromUri(uri)
+            val result = backupManager.importFromUri(uri, includeAudio, applyAiPrefs)
             result.fold(
                 onSuccess = { summary: BackupSummary ->
                     val parts = buildList {
@@ -782,8 +792,15 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                     // restored setup works without a trip through the
                     // AI settings screen.
                     if (summary.appliedAiSettings) {
-                        redownloadSelectedAiModels()
+                        val queued = redownloadSelectedAiModels()
                         refreshAiState()
+                        if (queued > 0) {
+                            Toast.makeText(
+                                getApplication(),
+                                "AI models installing in the background…",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 },
                 onFailure = { err ->
