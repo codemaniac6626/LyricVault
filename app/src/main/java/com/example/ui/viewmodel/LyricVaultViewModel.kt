@@ -335,6 +335,27 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         audioRecorder.cancelRecording()
     }
 
+    /**
+     * Copies a picked image into the app's image store for an idea block.
+     * The editor adds the block when the path comes back; a null result
+     * means the copy failed and nothing is added.
+     */
+    fun importIdeaImage(uri: Uri, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val path = repository.importImageFromUri(uri)
+            if (path == null) {
+                _snackbarMessage.value = "Could not add that image."
+            }
+            onResult(path)
+        }
+    }
+
+    fun deleteImageFile(path: String?) {
+        viewModelScope.launch {
+            repository.deleteBlockFileIfExists(path)
+        }
+    }
+
     fun deleteAudioFile(path: String?) {
         if (playbackState.value.activePath == path) {
             audioPlayer.stop()
@@ -751,15 +772,30 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         _explanations.value = emptyMap()
     }
 
-    fun exportVaultJson(uri: Uri, includeAudioBase64: Boolean, includeAiPrefs: Boolean) {
+    fun exportVaultJson(
+        uri: Uri,
+        includeAudioBase64: Boolean,
+        includeAiPrefs: Boolean,
+        includeImagesBase64: Boolean
+    ) {
         viewModelScope.launch {
             _backupState.value = BackupOperationState.Working
-            val result = backupManager.exportToUri(uri, includeAudioBase64, includeAiPrefs)
+            val result = backupManager.exportToUri(
+                uri, includeAudioBase64, includeAiPrefs, includeImagesBase64
+            )
             result.fold(
                 onSuccess = { summary: BackupSummary ->
-                    val audioPart = if (includeAudioBase64) ", ${summary.audioClipsCount} audio clips" else " (text-only JSON)"
+                    val mediaParts = buildList {
+                        if (includeAudioBase64) add("${summary.audioClipsCount} audio clips")
+                        if (includeImagesBase64) add("${summary.imagesCount} images")
+                    }
+                    val mediaPart = if (mediaParts.isEmpty()) {
+                        " (text-only JSON)"
+                    } else {
+                        ", " + mediaParts.joinToString(", ")
+                    }
                     _backupState.value = BackupOperationState.Success(
-                        "Exported ${summary.ideasCount} ideas, ${summary.songsCount} songs$audioPart."
+                        "Exported ${summary.ideasCount} ideas, ${summary.songsCount} songs$mediaPart."
                     )
                 },
                 onFailure = { err ->
@@ -771,16 +807,22 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun importVaultFile(uri: Uri, includeAudio: Boolean, applyAiPrefs: Boolean) {
+    fun importVaultFile(
+        uri: Uri,
+        includeAudio: Boolean,
+        applyAiPrefs: Boolean,
+        includeImages: Boolean
+    ) {
         viewModelScope.launch {
             _backupState.value = BackupOperationState.Working
-            val result = backupManager.importFromUri(uri, includeAudio, applyAiPrefs)
+            val result = backupManager.importFromUri(uri, includeAudio, applyAiPrefs, includeImages)
             result.fold(
                 onSuccess = { summary: BackupSummary ->
                     val parts = buildList {
                         add("${summary.ideasCount} ideas")
                         if (summary.songsCount > 0) add("${summary.songsCount} songs")
                         if (summary.audioClipsCount > 0) add("${summary.audioClipsCount} audio clips")
+                        if (summary.imagesCount > 0) add("${summary.imagesCount} images")
                     }
                     _backupState.value = BackupOperationState.Success(
                         "Imported ${parts.joinToString(", ")} into your local vault."

@@ -22,6 +22,8 @@ data class BackupSummary(
     val ideasCount: Int,
     val songsCount: Int,
     val audioClipsCount: Int,
+    /** Idea image blocks carried by the backup (exported or restored). */
+    val imagesCount: Int = 0,
     /** True when the backup carried an aiSettings block and it was applied. */
     val appliedAiSettings: Boolean = false
 )
@@ -39,19 +41,22 @@ class VaultBackupManager(
     suspend fun exportToUri(
         uri: Uri,
         includeAudioBase64: Boolean,
-        includeAiPrefs: Boolean = true
+        includeAiPrefs: Boolean = true,
+        includeImagesBase64: Boolean = false
     ): Result<BackupSummary> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val ideas = dao.getAllIdeasOnce()
                 val songs = dao.getAllSongsOnce()
                 var exportedAudioCount = 0
+                var exportedImagesCount = 0
 
                 val root = JSONObject().apply {
                     put("app", "LyricVault")
                     put("formatVersion", 1)
                     put("exportedAt", System.currentTimeMillis())
                     put("includesAudio", includeAudioBase64)
+                    put("includesImages", includeImagesBase64)
                     if (includeAiPrefs) {
                         put("globalCustomInstruction", aiSettings.customInstruction)
                     }
@@ -87,6 +92,15 @@ class VaultBackupManager(
                                     val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
                                     put("audioBase64", encoded)
                                     exportedAudioCount++
+                                }
+                            }
+                            if (includeImagesBase64 && block.blockType == BlockType.IMAGE && !block.imageFilePath.isNullOrBlank()) {
+                                val file = File(block.imageFilePath)
+                                if (file.exists() && file.length() <= 12L * 1024L * 1024L) {
+                                    val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+                                    put("imageBase64", encoded)
+                                    put("imageExt", file.extension.ifBlank { "jpg" })
+                                    exportedImagesCount++
                                 }
                             }
                         }
@@ -173,7 +187,8 @@ class VaultBackupManager(
                 BackupSummary(
                     ideasCount = ideas.size,
                     songsCount = songs.size,
-                    audioClipsCount = exportedAudioCount
+                    audioClipsCount = exportedAudioCount,
+                    imagesCount = exportedImagesCount
                 )
             }
         }
@@ -181,7 +196,8 @@ class VaultBackupManager(
     suspend fun importFromUri(
         uri: Uri,
         includeAudio: Boolean = true,
-        applyAiPrefs: Boolean = true
+        applyAiPrefs: Boolean = true,
+        includeImages: Boolean = true
     ): Result<BackupSummary> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -308,8 +324,10 @@ class VaultBackupManager(
 
                 var importedIdeas = 0
                 var importedAudio = 0
+                var importedImages = 0
                 val ideaIdMap = mutableMapOf<Long, Long>()
                 val audioDir = repository.audioClipsDirectory()
+                val imagesDir = repository.ideaImagesDirectory()
                 val ideasArray = root.optJSONArray("ideas") ?: JSONArray()
                 for (i in 0 until ideasArray.length()) {
                     val obj = ideasArray.getJSONObject(i)
@@ -322,6 +340,9 @@ class VaultBackupManager(
                         // "Leave out audio" import: melody blocks are
                         // skipped altogether, not restored as dead tiles.
                         if (type == BlockType.AUDIO && !includeAudio) continue
+                        // Same rule for images: left out means skipped,
+                        // not restored as dead tiles.
+                        if (type == BlockType.IMAGE && !includeImages) continue
                         var restoredPath: String? = null
                         if (type == BlockType.AUDIO && bObj.has("audioBase64")) {
                             val b64 = bObj.optString("audioBase64", "")
@@ -333,6 +354,20 @@ class VaultBackupManager(
                                 importedAudio++
                             }
                         }
+                        var restoredImagePath: String? = null
+                        if (type == BlockType.IMAGE && bObj.has("imageBase64")) {
+                            val b64 = bObj.optString("imageBase64", "")
+                            if (b64.isNotBlank()) {
+                                val bytes = Base64.decode(b64, Base64.DEFAULT)
+                                val ext = bObj.optString("imageExt", "jpg")
+                                    .filter { it.isLetterOrDigit() }
+                                    .ifBlank { "jpg" }
+                                val outFile = File(imagesDir, "img_${UUID.randomUUID()}.$ext")
+                                outFile.writeBytes(bytes)
+                                restoredImagePath = outFile.absolutePath
+                                importedImages++
+                            }
+                        }
                         blocks.add(
                             IdeaBlockEntity(
                                 ideaId = 0L,
@@ -341,6 +376,7 @@ class VaultBackupManager(
                                 textContent = bObj.optString("textContent", ""),
                                 audioFilePath = restoredPath,
                                 audioDurationMs = bObj.optLong("audioDurationMs", 0L),
+                                imageFilePath = restoredImagePath,
                                 createdAt = bObj.optLong("createdAt", now)
                             )
                         )
@@ -423,6 +459,7 @@ class VaultBackupManager(
                     ideasCount = importedIdeas,
                     songsCount = importedSongs,
                     audioClipsCount = importedAudio,
+                    imagesCount = importedImages,
                     appliedAiSettings = appliedAiSettings
                 )
             }

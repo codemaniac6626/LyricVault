@@ -1,6 +1,8 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.net.Uri
+import android.webkit.MimeTypeMap
 import com.example.data.local.BlockType
 import com.example.data.local.IdeaBlockEntity
 import com.example.data.local.IdeaNoteEntity
@@ -42,19 +44,54 @@ class LyricVaultRepository(
         val existing = dao.getIdeaByIdOnce(ideaId)
         dao.deleteIdeaById(ideaId)
         withContext(Dispatchers.IO) {
-            existing?.blocks
-                ?.filter { it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank() }
-                ?.forEach { block ->
-                    runCatching { File(block.audioFilePath!!).delete() }
+            existing?.blocks?.forEach { block ->
+                when (block.blockType) {
+                    BlockType.AUDIO ->
+                        if (!block.audioFilePath.isNullOrBlank()) {
+                            runCatching { File(block.audioFilePath!!).delete() }
+                        }
+                    BlockType.IMAGE ->
+                        if (!block.imageFilePath.isNullOrBlank()) {
+                            runCatching { File(block.imageFilePath!!).delete() }
+                        }
                 }
+            }
         }
     }
 
     suspend fun deleteAudioFileIfExists(path: String?) {
+        deleteBlockFileIfExists(path)
+    }
+
+    /** Deletes any block-owned media file (audio clip or idea image). */
+    suspend fun deleteBlockFileIfExists(path: String?) {
         if (path.isNullOrBlank()) return
         withContext(Dispatchers.IO) {
             runCatching { File(path).delete() }
         }
+    }
+
+    /**
+     * Copies an image picked by the user (photo picker / document picker
+     * Uri) into the app's own images directory and returns the new file's
+     * path. The copy matters: picker Uris are temporary grants, while the
+     * idea must own its image for as long as it exists — same reason idea
+     * audio is recorded straight into the clips directory.
+     */
+    suspend fun importImageFromUri(uri: Uri): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val mime = appContext.contentResolver.getType(uri)
+            val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                ?.takeIf { it.isNotBlank() } ?: "jpg"
+            val target = File(
+                ideaImagesDirectory(),
+                "idea_img_${System.currentTimeMillis()}_${System.nanoTime()}.$ext"
+            )
+            appContext.contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            } ?: return@runCatching null
+            if (target.exists() && target.length() > 0L) target.absolutePath else null
+        }.getOrNull()
     }
 
     suspend fun saveSong(song: SongEntity): Long {
@@ -213,6 +250,12 @@ class LyricVaultRepository(
 
     fun audioClipsDirectory(): File {
         val dir = File(appContext.filesDir, "audio_clips")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    fun ideaImagesDirectory(): File {
+        val dir = File(appContext.filesDir, "idea_images")
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
