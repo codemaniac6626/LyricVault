@@ -7,6 +7,8 @@
 # What you get:
 #   - Every run uploads the APK as a workflow artifact (Actions tab -> run -> Artifacts).
 #   - Release runs also attach the APK to the release itself.
+#   - Manual runs create a new GitHub release (tagged
+#     apk-<build type>-<run number>) and attach the APK to it.
 #
 # Build type:
 #   - Debug is the default and needs no secrets. The workflow generates the
@@ -77,8 +79,6 @@ jobs:
           echo "Building a $TYPE APK."
 
       - name: Create debug keystore
-        # The debug signing config points at ${rootDir}/debug.keystore, which
-        # is gitignored. Generate one matching its alias and passwords.
         run: >
           keytool -genkeypair -keystore debug.keystore
           -storepass android -alias androiddebugkey -keypass android
@@ -114,3 +114,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: LyricVault-${{ github.ref_name }}-${{ steps.build-type.outputs.type }}.apk
+
+      - name: Create release and upload APK (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ steps.build-type.outputs.type }}-${{ github.run_number }}
+          name: LyricVault ${{ steps.build-type.outputs.type }} APK — manual build ${{ github.run_number }}
+          body: |
+            APK built by a manual "Build APK" workflow run (#${{ github.run_number }}) from branch ${{ github.ref_name }}.
+          prerelease: ${{ steps.build-type.outputs.type == 'debug' }}
+          files: LyricVault-${{ github.ref_name }}-${{ steps.build-type.outputs.type }}.apk
+          
