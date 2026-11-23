@@ -472,6 +472,25 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         )
     }
 
+    /**
+     * After a backup import applies stored AI settings, queue downloads
+     * for the selected embedder and LLM models that are not installed
+     * yet. Cloud selections (Gemini) and "none" need no download, and
+     * downloadModel already handles storage checks and the Wi-Fi-only
+     * preference — which by now is the restored one.
+     */
+    fun redownloadSelectedAiModels() {
+        listOf(aiSettings.embedderId, aiSettings.llmId)
+            .distinct()
+            .forEach { modelId ->
+                val model = ModelCatalog.byId(modelId) ?: return@forEach
+                if (model.noDownload) return@forEach
+                if (!modelStore.isInstalled(model)) {
+                    downloadModel(modelId)
+                }
+            }
+    }
+
     private fun observeDownload(model: AiModel, workId: java.util.UUID) {
         downloadJobs[model.id]?.cancel()
         downloadJobs[model.id] = viewModelScope.launch {
@@ -712,6 +731,16 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         _explanations.value = _explanations.value - ideaId
     }
 
+    /**
+     * Drops every generated "Why this fits" explanation. Explanations are
+     * session-scoped to one song visit: the songwriting screen calls this
+     * when a song is opened and when it is left, so a reason written for
+     * one song (or an earlier visit) never shows up under another.
+     */
+    fun clearExplanations() {
+        _explanations.value = emptyMap()
+    }
+
     fun exportVaultJson(uri: Uri, includeAudioBase64: Boolean) {
         viewModelScope.launch {
             _backupState.value = BackupOperationState.Working
@@ -748,6 +777,14 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     // New ideas need embeddings for AI matching.
                     if (summary.ideasCount > 0) reembedVault()
+                    // A backup that carried AI settings has just applied
+                    // them: fetch the selected models again so the
+                    // restored setup works without a trip through the
+                    // AI settings screen.
+                    if (summary.appliedAiSettings) {
+                        redownloadSelectedAiModels()
+                        refreshAiState()
+                    }
                 },
                 onFailure = { err ->
                     _backupState.value = BackupOperationState.Error(

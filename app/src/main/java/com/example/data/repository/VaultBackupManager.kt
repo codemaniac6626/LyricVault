@@ -21,7 +21,9 @@ import java.util.UUID
 data class BackupSummary(
     val ideasCount: Int,
     val songsCount: Int,
-    val audioClipsCount: Int
+    val audioClipsCount: Int,
+    /** True when the backup carried an aiSettings block and it was applied. */
+    val appliedAiSettings: Boolean = false
 )
 
 class VaultBackupManager(
@@ -47,6 +49,20 @@ class VaultBackupManager(
                     put("exportedAt", System.currentTimeMillis())
                     put("includesAudio", includeAudioBase64)
                     put("globalCustomInstruction", aiSettings.customInstruction)
+                    // AI matching setup, as metadata only — never the
+                    // model files themselves. On import these selections
+                    // are re-applied and the chosen models re-downloaded.
+                    put(
+                        "aiSettings",
+                        JSONObject().apply {
+                            put("aiEnabled", aiSettings.aiEnabled)
+                            put("embedderId", aiSettings.embedderId)
+                            put("llmId", aiSettings.llmId)
+                            put("backend", aiSettings.backendPreference.name)
+                            put("wifiOnlyDownloads", aiSettings.wifiOnlyDownloads)
+                            put("geminiModel", aiSettings.geminiModel)
+                        }
+                    )
                 }
 
                 val ideasArray = JSONArray()
@@ -219,6 +235,37 @@ class VaultBackupManager(
                     aiSettings.customInstruction =
                         root.optString("globalCustomInstruction", "")
                 }
+                // AI matching setup (see export): re-apply the selections
+                // stored in the backup. The ViewModel is told via the
+                // summary so it can re-download the selected models.
+                var appliedAiSettings = false
+                val aiJson = root.optJSONObject("aiSettings")
+                if (aiJson != null) {
+                    if (aiJson.has("aiEnabled")) {
+                        aiSettings.aiEnabled = aiJson.optBoolean("aiEnabled", false)
+                    }
+                    if (aiJson.has("embedderId")) {
+                        aiSettings.embedderId = aiJson.optString("embedderId", "")
+                    }
+                    if (aiJson.has("llmId")) {
+                        aiSettings.llmId = aiJson.optString("llmId", "")
+                    }
+                    if (aiJson.has("backend")) {
+                        aiSettings.backendPreference = runCatching {
+                            AiSettings.BackendPreference.valueOf(
+                                aiJson.optString("backend", "")
+                            )
+                        }.getOrDefault(AiSettings.BackendPreference.AUTO)
+                    }
+                    if (aiJson.has("wifiOnlyDownloads")) {
+                        aiSettings.wifiOnlyDownloads =
+                            aiJson.optBoolean("wifiOnlyDownloads", true)
+                    }
+                    if (aiJson.has("geminiModel")) {
+                        aiSettings.geminiModel = aiJson.optString("geminiModel", "")
+                    }
+                    appliedAiSettings = true
+                }
                 val songIdMap = mutableMapOf<Long, Long>()
                 // Melody blocks are restored AFTER the ideas below, since a
                 // block's sourceIdeaId must be remapped through ideaIdMap.
@@ -358,7 +405,8 @@ class VaultBackupManager(
                 BackupSummary(
                     ideasCount = importedIdeas,
                     songsCount = importedSongs,
-                    audioClipsCount = importedAudio
+                    audioClipsCount = importedAudio,
+                    appliedAiSettings = appliedAiSettings
                 )
             }
         }
