@@ -16,26 +16,26 @@ import com.example.widget.WidgetActions
 
 class MainActivity : ComponentActivity() {
 
-    // The home-screen quick-capture widget launches this activity with one of
-    // the WidgetActions actions. The value is handed to the Compose
-    // navigation layer, which performs the matching navigation exactly once
-    // and then clears it. launchMode is singleTop, so widget taps while the
-    // app is already open arrive via onNewIntent instead of a second copy of
-    // the activity.
-    private val widgetAction = mutableStateOf<String?>(null)
+    // The home-screen quick-capture widget launches this activity with an
+    // ACTION_VIEW intent carrying the tile's lyricvault:// deep link. The
+    // intent is handed to the Compose navigation layer, which resolves it
+    // with NavController.handleDeepLink exactly once and then clears it.
+    // launchMode is singleTop, so widget taps while the app is already open
+    // arrive via onNewIntent instead of a second copy of the activity.
+    private val widgetIntent = mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        widgetAction.value = intent?.action?.takeIf { it in WidgetActions.ALL }
+        widgetIntent.value = intent?.takeIf { it.dataString in WidgetActions.URIS }
         setContent {
             val viewModel: LyricVaultViewModel = viewModel()
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             LyricVaultTheme(themeMode = themeMode) {
                 LyricVaultApp(
                     viewModel = viewModel,
-                    widgetAction = widgetAction.value,
-                    onWidgetActionConsumed = { widgetAction.value = null }
+                    widgetIntent = widgetIntent.value,
+                    onWidgetIntentConsumed = { widgetIntent.value = null }
                 )
             }
         }
@@ -44,6 +44,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        widgetAction.value = intent.action?.takeIf { it in WidgetActions.ALL }
+        widgetIntent.value = intent.takeIf { it.dataString in WidgetActions.URIS }
     }
 }

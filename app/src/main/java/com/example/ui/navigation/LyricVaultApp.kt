@@ -49,6 +49,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.example.ui.screens.AiSettingsScreen
 import com.example.ui.screens.BackupSettingsScreen
 import com.example.ui.screens.IdeaEditorScreen
@@ -56,7 +57,7 @@ import com.example.ui.screens.SongsListScreen
 import com.example.ui.screens.SongwritingScreen
 import com.example.ui.screens.VaultScreen
 import com.example.ui.viewmodel.LyricVaultViewModel
-import com.example.widget.WidgetActions
+import android.content.Intent
 
 object Routes {
     const val VAULT = "vault"
@@ -125,8 +126,8 @@ private val editorPopExit: AnimatedContentTransitionScope<NavBackStackEntry>.() 
 @Composable
 fun LyricVaultApp(
     viewModel: LyricVaultViewModel,
-    widgetAction: String? = null,
-    onWidgetActionConsumed: () -> Unit = {}
+    widgetIntent: Intent? = null,
+    onWidgetIntentConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -143,23 +144,15 @@ fun LyricVaultApp(
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
 
     // Home-screen widget deep links: each tile of the quick-capture widget
-    // launches MainActivity with a WidgetActions action. Run the same
-    // navigation the in-app buttons use, then clear the action so the
-    // navigation fires exactly once per tap.
-    LaunchedEffect(widgetAction) {
-        when (widgetAction) {
-            WidgetActions.NEW_IDEA ->
-                navController.navigate(Routes.ideaEditor(ideaId = 0L, autoRecord = false))
-
-            WidgetActions.RECORD_MELODY ->
-                navController.navigate(Routes.ideaEditor(ideaId = 0L, autoRecord = true))
-
-            WidgetActions.NEW_SONG ->
-                navController.navigate(Routes.songwriting(songId = 0L))
-
-            else -> return@LaunchedEffect
-        }
-        onWidgetActionConsumed()
+    // launches MainActivity with an ACTION_VIEW intent whose data is a
+    // lyricvault://widget/... URI, registered as a deep link on the two
+    // editor destinations below. Hand the intent to the NavController,
+    // which queues it until the graph is ready and navigates with a
+    // proper back stack; then clear it so it fires exactly once per tap.
+    LaunchedEffect(widgetIntent) {
+        val intent = widgetIntent ?: return@LaunchedEffect
+        navController.handleDeepLink(intent)
+        onWidgetIntentConsumed()
     }
 
     LaunchedEffect(snackbarMessage) {
@@ -348,6 +341,12 @@ fun LyricVaultApp(
 
                     composable(
                         route = Routes.IDEA_EDITOR,
+                        deepLinks = listOf(
+                            navDeepLink {
+                                uriPattern =
+                                    "lyricvault://widget/idea_editor/{ideaId}/{autoRecord}"
+                            }
+                        ),
                         arguments = listOf(
                             navArgument("ideaId") { type = NavType.LongType },
                             navArgument("autoRecord") { type = NavType.BoolType }
@@ -371,6 +370,11 @@ fun LyricVaultApp(
 
                     composable(
                         route = Routes.SONGWRITING,
+                        deepLinks = listOf(
+                            navDeepLink {
+                                uriPattern = "lyricvault://widget/songwriting/{songId}"
+                            }
+                        ),
                         arguments = listOf(
                             navArgument("songId") { type = NavType.LongType }
                         ),
