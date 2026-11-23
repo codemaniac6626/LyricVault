@@ -60,14 +60,17 @@ fun BackupSettingsScreen(
     totalAudioClips: Int,
     backupState: BackupOperationState,
     themeMode: ThemeMode,
-    onExportJson: (android.net.Uri, Boolean) -> Unit,
-    onImportFile: (android.net.Uri) -> Unit,
+    onExportJson: (android.net.Uri, Boolean, Boolean) -> Unit,
+    onImportFile: (android.net.Uri, Boolean, Boolean) -> Unit,
     onBulkImportText: (String, String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onOpenAiSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var includeAudioBase64 by remember { mutableStateOf(false) }
+    var exportAiPrefs by remember { mutableStateOf(true) }
+    var importAudio by remember { mutableStateOf(true) }
+    var importAiPrefs by remember { mutableStateOf(true) }
     var bulkPasteText by remember { mutableStateOf("") }
     var bulkTag by remember { mutableStateOf("imported") }
 
@@ -75,7 +78,7 @@ fun BackupSettingsScreen(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         if (uri != null) {
-            onExportJson(uri, includeAudioBase64)
+            onExportJson(uri, includeAudioBase64, exportAiPrefs)
         }
     }
 
@@ -83,7 +86,7 @@ fun BackupSettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            onImportFile(uri)
+            onImportFile(uri, importAudio, importAiPrefs)
         }
     }
 
@@ -312,6 +315,31 @@ fun BackupSettingsScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Include AI prefs in export",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (exportAiPrefs) "AI matching setup: selected models, backend and the global instruction" else "Ideas and songs only — no AI setup",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = exportAiPrefs,
+                                onCheckedChange = { exportAiPrefs = it },
+                                modifier = Modifier.testTag("toggle_export_ai_prefs")
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
@@ -352,6 +380,62 @@ fun BackupSettingsScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Import File")
                             }
+                        }
+
+                        Text(
+                            text = "Import options",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Restore audio melodies",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (importAudio) "Melodies in the file are restored with the ideas and songs" else "Audio is left out — text only",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = importAudio,
+                                onCheckedChange = { importAudio = it },
+                                modifier = Modifier.testTag("toggle_import_audio")
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Apply AI prefs from backup",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (importAiPrefs) "The backup's AI setup replaces yours and its models re-download" else "Your current AI setup is kept",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = importAiPrefs,
+                                onCheckedChange = { importAiPrefs = it },
+                                modifier = Modifier.testTag("toggle_import_ai_prefs")
+                            )
                         }
                     }
                 }
