@@ -8,6 +8,7 @@ import com.example.data.local.IdeaBlockEntity
 import com.example.data.local.IdeaNoteEntity
 import com.example.data.local.IdeaUsageEntity
 import com.example.data.local.LyricVaultDao
+import com.example.data.local.SongAudioBlockEntity
 import com.example.data.local.SongEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -91,6 +92,34 @@ class VaultBackupManager(
 
                 val songsArray = JSONArray()
                 songs.forEach { song ->
+                    // Melody blocks recorded/imported inside this song
+                    // (song_audio_blocks). Audio bytes ride along as
+                    // Base64 when the caller asked for audio, under the
+                    // same 12 MB per-file cap as idea clips. The block's
+                    // sourceIdeaId points at an idea in this same backup;
+                    // import remaps it to the restored idea's new id.
+                    val audioBlocksArray = JSONArray()
+                    dao.getSongAudioBlocksOnce(song.id).forEach { block ->
+                        audioBlocksArray.put(
+                            JSONObject().apply {
+                                put("orderIndex", block.orderIndex)
+                                put("label", block.label)
+                                put("audioDurationMs", block.audioDurationMs)
+                                put("createdAt", block.createdAt)
+                                block.sourceIdeaId?.let { put("sourceIdeaId", it) }
+                                if (includeAudioBase64) {
+                                    val file = File(block.audioFilePath)
+                                    if (file.exists() && file.length() <= 12L * 1024L * 1024L) {
+                                        put(
+                                            "audioBase64",
+                                            Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+                                        )
+                                        exportedAudioCount++
+                                    }
+                                }
+                            }
+                        )
+                    }
                     songsArray.put(
                         JSONObject().apply {
                             put("originalId", song.id)
@@ -102,6 +131,7 @@ class VaultBackupManager(
                             put("customInstruction", song.customInstruction)
                             put("createdAt", song.createdAt)
                             put("updatedAt", song.updatedAt)
+                            put("audioBlocks", audioBlocksArray)
                         }
                     )
                 }
@@ -176,6 +206,9 @@ class VaultBackupManager(
 
                 val root = JSONObject(trimmed)
                 val songIdMap = mutableMapOf<Long, Long>()
+                // Melody blocks are restored AFTER the ideas below, since a
+                // block's sourceIdeaId must be remapped through ideaIdMap.
+                val pendingSongAudio = mutableListOf<Pair<Long, JSONArray>>()
                 var importedSongs = 0
                 val songsArray = root.optJSONArray("songs") ?: JSONArray()
                 for (i in 0 until songsArray.length()) {
@@ -195,11 +228,16 @@ class VaultBackupManager(
                         )
                     )
                     if (oldId > 0L) songIdMap[oldId] = newSongId
+                    val blocksJson = obj.optJSONArray("audioBlocks")
+                    if (blocksJson != null && blocksJson.length() > 0) {
+                        pendingSongAudio.add(newSongId to blocksJson)
+                    }
                     importedSongs++
                 }
 
                 var importedIdeas = 0
                 var importedAudio = 0
+                val ideaIdMap = mutableMapOf<Long, Long>()
                 val audioDir = repository.audioClipsDirectory()
                 val ideasArray = root.optJSONArray("ideas") ?: JSONArray()
                 for (i in 0 until ideasArray.length()) {
@@ -234,6 +272,7 @@ class VaultBackupManager(
                         )
                     }
 
+                    val oldIdeaId = obj.optLong("originalId", -1L)
                     val newIdeaId = dao.saveIdeaWithBlocks(
                         IdeaNoteEntity(
                             title = obj.optString("title", ""),
@@ -245,6 +284,8 @@ class VaultBackupManager(
                         ),
                         blocks
                     )
+
+                    if (oldIdeaId > 0L) ideaIdMap[oldIdeaId] = newIdeaId
 
                     val usagesArray = obj.optJSONArray("usages") ?: JSONArray()
                     for (u in 0 until usagesArray.length()) {
@@ -262,6 +303,42 @@ class VaultBackupManager(
                         }
                     }
                     importedIdeas++
+                }
+
+                // Restore song melody blocks now that both id maps are
+                // complete. A block is restored only when the backup
+                // carries its audio bytes (same rule as idea clips: a
+                // no-audio export cannot recreate the file). The source
+                // idea link is remapped when that idea was restored too,
+                // and dropped when it was not part of this backup.
+                for ((newSongId, blocksJson) in pendingSongAudio) {
+                    for (b in 0 until blocksJson.length()) {
+                        val bObj = blocksJson.getJSONObject(b)
+                        val b64 = bObj.optString("audioBase64", "")
+                        if (b64.isBlank()) continue
+                        val bytes = Base64.decode(b64, Base64.DEFAULT)
+                        val outFile = File(audioDir, "song_clip_${UUID.randomUUID()}.m4a")
+                        outFile.writeBytes(bytes)
+                        importedAudio++
+                        dao.insertSongAudioBlock(
+                            SongAudioBlockEntity(
+                                songId = newSongId,
+                                orderIndex = bObj.optInt("orderIndex", b),
+                                label = bObj.optString("label", ""),
+                                audioFilePath = outFile.absolutePath,
+                                audioDurationMs = bObj.optLong("audioDurationMs", 0L),
+                                sourceIdeaId = if (bObj.has("sourceIdeaId")) {
+                                    ideaIdMap[bObj.optLong("sourceIdeaId", -1L)]
+                                } else {
+                                    null
+                                },
+                                createdAt = bObj.optLong(
+                                    "createdAt",
+                                    System.currentTimeMillis()
+                                )
+                            )
+                        )
+                    }
                 }
 
                 BackupSummary(

@@ -7,6 +7,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.RemoteViews
 import com.example.MainActivity
 import com.example.R
@@ -76,8 +77,17 @@ class QuickCaptureWidget : AppWidgetProvider() {
     }
 
     private fun tileIntent(context: Context, action: String, requestCode: Int): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            this.action = action
+        // ACTION_VIEW + the tile's deep-link URI: the navigation layer
+        // resolves it with NavController.handleDeepLink, the standard
+        // widget-to-screen path. (The earlier version reused the plain
+        // launch intent with a custom action string, and taps landed on
+        // the start destination instead of the tile's screen.)
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse(WidgetActions.uriFor(action)),
+            context,
+            MainActivity::class.java
+        ).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         return PendingIntent.getActivity(

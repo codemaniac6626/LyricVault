@@ -16,4 +16,26 @@ object WidgetActions {
     const val NEW_SONG = "com.example.widget.action.NEW_SONG"
 
     val ALL: Set<String> = setOf(NEW_IDEA, RECORD_MELODY, NEW_SONG)
+
+    // Deep links, one per tile. Each URI mirrors the in-app navigation
+    // route for the same destination (idea_editor/{ideaId}/{autoRecord},
+    // songwriting/{songId}), under a lyricvault://widget/ prefix. The
+    // widget puts one of these in the intent's data; the navigation layer
+    // registers matching deep links on the two editor destinations and
+    // MainActivity hands the intent to NavController.handleDeepLink. The
+    // data URI also makes each tile's PendingIntent unambiguous: Android
+    // tells PendingIntents apart by action AND data, never by extras.
+    const val NEW_IDEA_URI = "lyricvault://widget/idea_editor/0/false"
+    const val RECORD_MELODY_URI = "lyricvault://widget/idea_editor/0/true"
+    const val NEW_SONG_URI = "lyricvault://widget/songwriting/0"
+
+    val URIS: Set<String> = setOf(NEW_IDEA_URI, RECORD_MELODY_URI, NEW_SONG_URI)
+
+    /** The deep-link URI for a tile action, or null for anything else. */
+    fun uriFor(action: String?): String? = when (action) {
+        NEW_IDEA -> NEW_IDEA_URI
+        RECORD_MELODY -> RECORD_MELODY_URI
+        NEW_SONG -> NEW_SONG_URI
+        else -> null
+    }
 }
