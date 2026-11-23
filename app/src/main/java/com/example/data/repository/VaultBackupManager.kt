@@ -3,6 +3,7 @@ package com.example.data.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import com.example.ai.AiSettings
 import com.example.data.local.BlockType
 import com.example.data.local.IdeaBlockEntity
 import com.example.data.local.IdeaNoteEntity
@@ -28,6 +29,11 @@ class VaultBackupManager(
     private val dao: LyricVaultDao,
     private val repository: LyricVaultRepository
 ) {
+    // The parent-level (global) AI matching instruction lives in
+    // AiSettings' SharedPreferences, outside the database, so the backup
+    // reads/writes it through AiSettings directly. Per-song overrides are
+    // SongEntity.customInstruction and already ride along with each song.
+    private val aiSettings = AiSettings(context)
     suspend fun exportToUri(uri: Uri, includeAudioBase64: Boolean): Result<BackupSummary> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -40,6 +46,7 @@ class VaultBackupManager(
                     put("formatVersion", 1)
                     put("exportedAt", System.currentTimeMillis())
                     put("includesAudio", includeAudioBase64)
+                    put("globalCustomInstruction", aiSettings.customInstruction)
                 }
 
                 val ideasArray = JSONArray()
@@ -205,6 +212,13 @@ class VaultBackupManager(
                 }
 
                 val root = JSONObject(trimmed)
+                // Parent-level AI instruction: restore it when the backup
+                // carries one. Backups written before this key existed
+                // leave the current instruction untouched.
+                if (root.has("globalCustomInstruction")) {
+                    aiSettings.customInstruction =
+                        root.optString("globalCustomInstruction", "")
+                }
                 val songIdMap = mutableMapOf<Long, Long>()
                 // Melody blocks are restored AFTER the ideas below, since a
                 // block's sourceIdeaId must be remapped through ideaIdMap.
