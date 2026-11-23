@@ -7,8 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,13 +118,16 @@ fun ImageTileCard(
             }
 
             if (bitmap != null) {
+                // Show the whole picture at its own aspect ratio: the
+                // tile grows taller instead of cropping the image.
+                val bmp = bitmap!!
                 Image(
-                    bitmap = bitmap!!.asImageBitmap(),
+                    bitmap = bmp.asImageBitmap(),
                     contentDescription = label.ifBlank { "Idea image" },
                     contentScale = ContentScale.FillWidth,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 260.dp)
+                        .aspectRatio(bmp.width.toFloat() / bmp.height.toFloat())
                         .testTag("image_tile_preview")
                 )
             }

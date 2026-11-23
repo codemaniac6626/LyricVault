@@ -413,12 +413,6 @@ fun IdeaEditorScreen(
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "+ Text Block",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
 
                             Button(
@@ -439,12 +433,6 @@ fun IdeaEditorScreen(
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Record Melody",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
 
                             OutlinedButton(
@@ -460,12 +448,6 @@ fun IdeaEditorScreen(
                                     imageVector = Icons.Filled.AddPhotoAlternate,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Add Image",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -637,12 +619,11 @@ fun IdeaEditorScreen(
                 }
 
                 item(key = "blocks_section_label") {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 4.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
                             text = "FREE-FLOWING LYRICS, MELODIES & IMAGES",

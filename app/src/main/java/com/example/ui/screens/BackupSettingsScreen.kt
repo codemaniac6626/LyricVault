@@ -386,7 +386,7 @@ fun BackupSettingsScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Export JSON")
+                                Text("Export")
                             }
 
                             OutlinedButton(
@@ -405,7 +405,7 @@ fun BackupSettingsScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Import File")
+                                Text("Import")
                             }
                         }
 
