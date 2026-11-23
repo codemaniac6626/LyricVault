@@ -176,18 +176,6 @@ fun SongwritingScreen(
         }
     }
 
-    fun stopRecordingAndAttach() {
-        val recorded = viewModel.stopRecordingAudio() ?: return
-        // An audio block needs a saved song to belong to, so force-persist
-        // first — a brand-new song may still be completely blank here.
-        persistSong(force = true) { savedId ->
-            if (savedId > 0L) {
-                viewModel.addRecordedAudioToSong(savedId, recorded)
-            } else {
-                viewModel.deleteAudioFile(recorded.filePath)
-            }
-        }
-    }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -291,6 +279,19 @@ fun SongwritingScreen(
         viewModel.saveSong(entity) { savedId ->
             currentSongId = savedId
             then(savedId)
+        }
+    }
+
+    fun stopRecordingAndAttach() {
+        val recorded = viewModel.stopRecordingAudio() ?: return
+        // An audio block needs a saved song to belong to, so force-persist
+        // first — a brand-new song may still be completely blank here.
+        persistSong(force = true) { savedId ->
+            if (savedId > 0L) {
+                viewModel.addRecordedAudioToSong(savedId, recorded)
+            } else {
+                viewModel.deleteAudioFile(recorded.filePath)
+            }
         }
     }
 
