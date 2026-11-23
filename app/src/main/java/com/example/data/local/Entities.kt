@@ -10,6 +10,7 @@ import androidx.room.Relation
 object BlockType {
     const val TEXT = "TEXT"
     const val AUDIO = "AUDIO"
+    const val IMAGE = "IMAGE"
 }
 
 @Entity(tableName = "idea_notes")
@@ -43,6 +44,7 @@ data class IdeaBlockEntity(
     val textContent: String = "",
     val audioFilePath: String? = null,
     val audioDurationMs: Long = 0L,
+    val imageFilePath: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -168,6 +170,9 @@ data class IdeaNoteWithDetails(
     val audioBlockCount: Int
         get() = blocks.count { it.blockType == BlockType.AUDIO }
 
+    val imageBlockCount: Int
+        get() = blocks.count { it.blockType == BlockType.IMAGE }
+
     val totalAudioDurationMs: Long
         get() = blocks.filter { it.blockType == BlockType.AUDIO }.sumOf { it.audioDurationMs }
 
@@ -203,7 +208,18 @@ data class IdeaNoteWithDetails(
                 ?.textContent
                 ?.trim()
             if (!firstAudioLabel.isNullOrBlank()) return firstAudioLabel
-            return if (audioBlockCount > 0) "Voice Melody Idea" else "Untitled Spark"
+            val firstImageLabel = orderedBlocks
+                .firstOrNull { it.blockType == BlockType.IMAGE && it.textContent.isNotBlank() }
+                ?.textContent
+                ?.trim()
+            if (!firstImageLabel.isNullOrBlank()) return firstImageLabel
+            return if (audioBlockCount > 0) {
+                "Voice Melody Idea"
+            } else if (imageBlockCount > 0) {
+                "Image Idea"
+            } else {
+                "Untitled Spark"
+            }
         }
 
     val tagList: List<String>

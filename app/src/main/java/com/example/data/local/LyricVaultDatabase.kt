@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IdeaUsageEntity::class,
         IdeaEmbeddingEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class LyricVaultDatabase : RoomDatabase() {
@@ -90,13 +90,26 @@ abstract class LyricVaultDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 -> v5: adds the nullable `imageFilePath` column to
+         * idea_blocks (image blocks in ideas; the block's label rides in
+         * textContent, exactly like audio block captions, which also
+         * keeps labels inside the existing searchable text). ALTER TABLE
+         * keeps every existing row intact.
+         */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `idea_blocks` ADD COLUMN `imageFilePath` TEXT")
+            }
+        }
+
         fun getInstance(context: Context): LyricVaultDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     LyricVaultDatabase::class.java,
                     "lyric_vault.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { INSTANCE = it }
             }
         }
     }

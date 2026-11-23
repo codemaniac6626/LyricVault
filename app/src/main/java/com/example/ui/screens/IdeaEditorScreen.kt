@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
@@ -79,6 +80,7 @@ import com.example.data.local.IdeaUsageEntity
 import com.example.domain.audio.PlaybackState
 import com.example.domain.audio.RecordingState
 import com.example.ui.components.AudioTileCard
+import com.example.ui.components.ImageTileCard
 import com.example.ui.components.LiveRecordingBar
 import com.example.ui.components.UsageBadge
 import com.example.ui.components.formatRelativeDate
@@ -92,6 +94,7 @@ private data class EditableBlock(
     val textContent: String = "",
     val audioFilePath: String? = null,
     val audioDurationMs: Long = 0L,
+    val imageFilePath: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -133,6 +136,24 @@ fun IdeaEditorScreen(
         }
     }
 
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importIdeaImage(uri) { path ->
+                if (path != null) {
+                    blocks.add(
+                        EditableBlock(
+                            blockType = BlockType.IMAGE,
+                            textContent = "",
+                            imageFilePath = path
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     fun requestOrStartRecording() {
         val hasPerm = ContextCompat.checkSelfPermission(
             context,
@@ -165,6 +186,7 @@ fun IdeaEditorScreen(
                             textContent = b.textContent,
                             audioFilePath = b.audioFilePath,
                             audioDurationMs = b.audioDurationMs,
+                            imageFilePath = b.imageFilePath,
                             createdAt = b.createdAt
                         )
                     )
@@ -188,7 +210,8 @@ fun IdeaEditorScreen(
         if (title.isNotBlank() || contextNote.isNotBlank() || tags.isNotBlank()) return true
         return blocks.any {
             (it.blockType == BlockType.TEXT && it.textContent.isNotBlank()) ||
-                (it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank())
+                (it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank()) ||
+                (it.blockType == BlockType.IMAGE && !it.imageFilePath.isNullOrBlank())
         }
     }
 
@@ -223,7 +246,9 @@ fun IdeaEditorScreen(
             )
             val blockEntities = blocks
                 .filter {
-                    it.blockType == BlockType.AUDIO || it.textContent.isNotBlank() || blocks.size == 1
+                    it.blockType == BlockType.AUDIO ||
+                        (it.blockType == BlockType.IMAGE && !it.imageFilePath.isNullOrBlank()) ||
+                        it.textContent.isNotBlank() || blocks.size == 1
                 }
                 .mapIndexed { idx, b ->
                     IdeaBlockEntity(
@@ -233,6 +258,7 @@ fun IdeaEditorScreen(
                         textContent = b.textContent,
                         audioFilePath = b.audioFilePath,
                         audioDurationMs = b.audioDurationMs,
+                        imageFilePath = b.imageFilePath,
                         createdAt = b.createdAt
                     )
                 }
@@ -420,6 +446,28 @@ fun IdeaEditorScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+
+                            OutlinedButton(
+                                onClick = { imagePickerLauncher.launch("image/*") },
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("add_image_block_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AddPhotoAlternate,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Add Image",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -597,7 +645,7 @@ fun IdeaEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "FREE-FLOWING LYRICS & MELODIES",
+                            text = "FREE-FLOWING LYRICS, MELODIES & IMAGES",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -707,6 +755,29 @@ fun IdeaEditorScreen(
                                 )
                             }
                         }
+                    } else if (block.blockType == BlockType.IMAGE) {
+                        ImageTileCard(
+                            modifier = Modifier.animateItem(),
+                            imagePath = block.imageFilePath,
+                            label = block.textContent,
+                            editable = true,
+                            onLabelChange = { updated ->
+                                blocks[index] = block.copy(textContent = updated)
+                            },
+                            onMoveUp = if (index > 0) {
+                                { Collections.swap(blocks, index, index - 1) }
+                            } else null,
+                            onMoveDown = if (index < blocks.lastIndex) {
+                                { Collections.swap(blocks, index, index + 1) }
+                            } else null,
+                            onDelete = {
+                                val removed = blocks.removeAt(index)
+                                viewModel.deleteImageFile(removed.imageFilePath)
+                                if (blocks.isEmpty()) {
+                                    blocks.add(EditableBlock(blockType = BlockType.TEXT, textContent = ""))
+                                }
+                            }
+                        )
                     } else {
                         AudioTileCard(
                             modifier = Modifier.animateItem(),
@@ -748,7 +819,7 @@ fun IdeaEditorScreen(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Delete this idea?") },
-            text = { Text("This will permanently remove the note and any melody recordings inside it from your phone.") },
+            text = { Text("This will permanently remove the note and any melody recordings or images inside it from your phone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
