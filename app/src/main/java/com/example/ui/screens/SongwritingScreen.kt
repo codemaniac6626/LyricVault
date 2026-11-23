@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
@@ -136,6 +137,10 @@ fun SongwritingScreen(
     var matchMode by remember { mutableStateOf(MatchMode.WHOLE_SONG_VIBE) }
     var specificLineQuery by remember { mutableStateOf("") }
     var matchResult by remember { mutableStateOf(SplitMatchResult()) }
+
+    // Bumped by the matches pane's Refresh button to force the matching
+    // effect below to run again on demand.
+    var matchRefreshKey by remember { mutableIntStateOf(0) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showLinePickerDialog by remember { mutableStateOf(false) }
     var isLoaded by remember { mutableStateOf(false) }
@@ -236,11 +241,21 @@ fun SongwritingScreen(
 
     val aiUiState by viewModel.aiUiState.collectAsState()
     val explanations by viewModel.explanations.collectAsState()
+
+    // "Why this fits" explanations live in the ViewModel, keyed by idea
+    // only — without this they would follow the idea into every other
+    // song and every later visit. They are session-scoped instead:
+    // cleared when this song is opened (below) and when it is left (the
+    // DisposableEffect further down), so each visit generates them fresh
+    // against this song's own context.
+    LaunchedEffect(songId) {
+        viewModel.clearExplanations()
+    }
     val llmConfigured = aiUiState.enabled && aiUiState.llmId != com.example.ai.AiSettings.LLM_NONE
 
     LaunchedEffect(
         vibeDescription, lyricsField.text, specificLineQuery, matchMode, allIdeas,
-        songInstruction, aiUiState.customInstruction
+        songInstruction, aiUiState.customInstruction, matchRefreshKey
     ) {
         delay(180L)
         matchResult = viewModel.computeMatches(
@@ -249,6 +264,25 @@ fun SongwritingScreen(
             mode = matchMode,
             songInstruction = songInstruction
         )
+    }
+
+    // The matches pane's Refresh button: re-run matching, and regenerate
+    // every explanation that is already on screen so its wording is
+    // produced fresh from this song's current vibe, lyrics and
+    // instruction — never carried over from an earlier run.
+    fun refreshMatches() {
+        val toRegenerate = explanations.filterValues {
+            it is ExplanationState.Done || it is ExplanationState.Error
+        }.keys
+        viewModel.clearExplanations()
+        matchRefreshKey++
+        toRegenerate.forEach { ideaId ->
+            viewModel.explainMatch(
+                ideaId,
+                effectiveQuery(),
+                songInstruction = songInstruction
+            )
+        }
     }
 
     // The instruction actually in effect for this song (per-song wins,
@@ -344,6 +378,10 @@ fun SongwritingScreen(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.audioPlayer.stop()
+            // Leaving the song ends the match session (see the
+            // LaunchedEffect(songId) above): no explanation survives
+            // into the next song or the next visit to this one.
+            viewModel.clearExplanations()
         }
     }
 
@@ -503,6 +541,7 @@ fun SongwritingScreen(
                                 songInstruction = songInstruction
                             )
                         },
+                        onRefreshMatches = { refreshMatches() },
                         onOpenAiSettings = onOpenAiSettings,
                         modifier = Modifier
                             .weight(0.9f)
@@ -623,6 +662,7 @@ fun SongwritingScreen(
                                     songInstruction = songInstruction
                                 )
                             },
+                            onRefreshMatches = { refreshMatches() },
                             onOpenAiSettings = onOpenAiSettings,
                             modifier = Modifier
                                 .weight(1f)
@@ -1307,6 +1347,7 @@ private fun SuggestionsPane(
     activeInstruction: String,
     explanations: Map<Long, ExplanationState>,
     onExplain: (Long) -> Unit,
+    onRefreshMatches: () -> Unit,
     onOpenAiSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1380,6 +1421,16 @@ private fun SuggestionsPane(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        IconButton(
+                            onClick = onRefreshMatches,
+                            modifier = Modifier.testTag("matches_refresh_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Refresh matches",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     // Mode Switcher: Whole Song Vibe vs Specific Line.

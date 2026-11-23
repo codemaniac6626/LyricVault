@@ -712,6 +712,16 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         _explanations.value = _explanations.value - ideaId
     }
 
+    /**
+     * Drops every generated "Why this fits" explanation. Explanations are
+     * session-scoped to one song visit: the songwriting screen calls this
+     * when a song is opened and when it is left, so a reason written for
+     * one song (or an earlier visit) never shows up under another.
+     */
+    fun clearExplanations() {
+        _explanations.value = emptyMap()
+    }
+
     fun exportVaultJson(uri: Uri, includeAudioBase64: Boolean) {
         viewModelScope.launch {
             _backupState.value = BackupOperationState.Working
