@@ -132,7 +132,17 @@ interface LyricVaultDao {
     ): Long {
         val now = System.currentTimeMillis()
         val finalId = if (idea.id == 0L) {
-            insertIdea(idea.copy(createdAt = if (idea.createdAt == 0L) now else idea.createdAt, updatedAt = now))
+            // Preserve caller-supplied timestamps on insert: the idea
+            // editor already stamps updatedAt itself when saving, and
+            // backup import passes each idea's real created/updated
+            // times — forcing "now" here made every restored idea show
+            // up as "just now" in the vault.
+            insertIdea(
+                idea.copy(
+                    createdAt = if (idea.createdAt == 0L) now else idea.createdAt,
+                    updatedAt = if (idea.updatedAt == 0L) now else idea.updatedAt
+                )
+            )
         } else {
             updateIdea(idea.copy(updatedAt = now))
             idea.id

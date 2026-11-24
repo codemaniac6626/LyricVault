@@ -588,8 +588,16 @@ fun SongwritingScreen(
                             },
                             modifier = Modifier.testTag("songwriting_tab_suggestions")
                         ) {
-                            val badge = if (matchResult.totalCount > 0) " (${matchResult.totalCount})" else ""
-                            Text("Vault Matches$badge")
+                            // Cap the badge at 9+: an exact count makes
+                            // the segmented tab resize (and re-wrap) every
+                            // time the digit count changes, which is
+                            // distracting while writing.
+                            val badge = when {
+                                matchResult.totalCount > 9 -> " (9+)"
+                                matchResult.totalCount > 0 -> " (${matchResult.totalCount})"
+                                else -> ""
+                            }
+                            Text("Vault Matches$badge", maxLines = 1)
                         }
                     }
 

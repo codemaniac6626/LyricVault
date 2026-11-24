@@ -62,7 +62,10 @@ enum class VaultFilter {
 
 sealed interface BackupOperationState {
     data object Idle : BackupOperationState
-    data object Working : BackupOperationState
+    data class Working(
+        val message: String = "Processing local vault file...",
+        val fraction: Float? = null
+    ) : BackupOperationState
     data class Success(val message: String) : BackupOperationState
     data class Error(val message: String) : BackupOperationState
 }
@@ -779,7 +782,7 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         includeImagesBase64: Boolean
     ) {
         viewModelScope.launch {
-            _backupState.value = BackupOperationState.Working
+            _backupState.value = BackupOperationState.Working()
             val result = backupManager.exportToUri(
                 uri, includeAudioBase64, includeAiPrefs, includeImagesBase64
             )
@@ -814,8 +817,24 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         includeImages: Boolean
     ) {
         viewModelScope.launch {
-            _backupState.value = BackupOperationState.Working
-            val result = backupManager.importFromUri(uri, includeAudio, applyAiPrefs, includeImages)
+            _backupState.value = BackupOperationState.Working()
+            var lastFraction = -1f
+            var lastLabel = ""
+            val result = backupManager.importFromUri(
+                uri, includeAudio, applyAiPrefs, includeImages
+            ) { fraction, label ->
+                // The importer reports after every song/idea; only
+                // republish when something visibly changed so the UI
+                // is not rebuilt hundreds of times on a big file.
+                if (label != lastLabel || fraction - lastFraction >= 0.01f) {
+                    lastLabel = label
+                    lastFraction = fraction
+                    _backupState.value = BackupOperationState.Working(
+                        message = label,
+                        fraction = fraction
+                    )
+                }
+            }
             result.fold(
                 onSuccess = { summary: BackupSummary ->
                     val parts = buildList {
@@ -856,7 +875,7 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     fun bulkImportText(rawText: String, tag: String) {
         viewModelScope.launch {
-            _backupState.value = BackupOperationState.Working
+            _backupState.value = BackupOperationState.Working()
             val count = repository.bulkImportPlainTextIdeas(rawText, defaultTag = tag.ifBlank { "imported" })
             if (count > 0) {
                 _backupState.value = BackupOperationState.Success("Imported $count ideas into your Vault.")
