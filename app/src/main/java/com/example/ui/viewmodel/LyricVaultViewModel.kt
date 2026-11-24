@@ -46,6 +46,7 @@ import com.example.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,8 +60,7 @@ enum class VaultFilter {
     ALL,
     UNUSED,
     USED,
-    WITH_AUDIO,
-    HAS_IMAGES
+    WITH_AUDIO
 }
 
 sealed interface BackupOperationState {
@@ -144,6 +144,23 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
     )
     val aiUiState: StateFlow<AiUiState> = _aiUiState.asStateFlow()
 
+    /**
+     * True while background work is queued or running — drives the
+     * small corner indicator in the app shell. Standing rule: every
+     * background job added to this app feeds into this signal so the
+     * user can always see that something is running.
+     */
+    val backgroundWorkActive: StateFlow<Boolean> =
+        WorkManager.getInstance(application)
+            .getWorkInfosByTagFlow(TranscriptionWorker.TAG)
+            .map { infos ->
+                infos.any {
+                    it.state == WorkInfo.State.ENQUEUED ||
+                        it.state == WorkInfo.State.RUNNING
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     private val _explanations = MutableStateFlow<Map<Long, ExplanationState>>(emptyMap())
     val explanations: StateFlow<Map<Long, ExplanationState>> = _explanations.asStateFlow()
 
@@ -190,7 +207,6 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 VaultFilter.UNUSED -> detail.idea.usedCount == 0
                 VaultFilter.USED -> detail.idea.usedCount > 0
                 VaultFilter.WITH_AUDIO -> detail.audioBlockCount > 0
-                VaultFilter.HAS_IMAGES -> detail.imageBlockCount > 0
             }
             val passesQuery = if (trimmed.isEmpty()) {
                 true

@@ -160,6 +160,8 @@ class TranscriptionWorker(
         const val KEY_TARGET_TYPE = "target_type"
         const val KEY_OWNER_ID = "owner_id"
         const val KEY_AUDIO_PATH = "audio_path"
+        /** Work tag the UI watches to show the background-work indicator. */
+        const val TAG = "transcription"
         const val TARGET_IDEA = "idea"
         const val TARGET_SONG = "song"
         const val NO_SPEECH_LABEL = "Hummed melody, no words"
@@ -198,6 +200,7 @@ class TranscriptionWorker(
                         .build()
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .addTag(TAG)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 uniqueName(audioPath),
