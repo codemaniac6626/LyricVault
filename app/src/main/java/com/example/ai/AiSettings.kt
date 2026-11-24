@@ -60,6 +60,37 @@ class AiSettings(context: Context) {
         set(value) = prefs.edit()
             .putString(KEY_CUSTOM_INSTRUCTION, value.take(MAX_INSTRUCTION_CHARS)).apply()
 
+    // ---- Audio transcription (cloud, opt-in, separate from matching) ----
+
+    /** Master switch for background transcription of recorded clips. */
+    var transcriptionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TRANSCRIPTION_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_TRANSCRIPTION_ENABLED, value).apply()
+
+    /**
+     * Transcription provider id: "groq" (default, and the only provider
+     * so far). New providers slot in behind the TranscriptionProvider
+     * interface without touching stored data.
+     */
+    var transcriptionProvider: String
+        get() = prefs.getString(KEY_TRANSCRIPTION_PROVIDER, "groq") ?: "groq"
+        set(value) = prefs.edit().putString(KEY_TRANSCRIPTION_PROVIDER, value).apply()
+
+    /**
+     * Audio file paths whose transcription has already been applied.
+     * Clip paths are UUID-named per recording, so a stale entry can
+     * never match a different clip.
+     */
+    fun isTranscribed(audioPath: String): Boolean =
+        prefs.getStringSet(KEY_TRANSCRIBED_PATHS, emptySet())
+            ?.contains(audioPath) == true
+
+    fun markTranscribed(audioPath: String) {
+        val current = prefs.getStringSet(KEY_TRANSCRIBED_PATHS, emptySet())
+            ?: emptySet()
+        prefs.edit().putStringSet(KEY_TRANSCRIBED_PATHS, current + audioPath).apply()
+    }
+
     companion object {
         const val PREFS_NAME = "lyric_vault_ai_prefs"
         const val LLM_NONE = "none"
@@ -72,5 +103,8 @@ class AiSettings(context: Context) {
         private const val KEY_WIFI_ONLY = "wifi_only"
         private const val KEY_GEMINI_MODEL = "gemini_model"
         private const val KEY_CUSTOM_INSTRUCTION = "custom_instruction"
+        private const val KEY_TRANSCRIPTION_ENABLED = "transcription_enabled"
+        private const val KEY_TRANSCRIPTION_PROVIDER = "transcription_provider"
+        private const val KEY_TRANSCRIBED_PATHS = "transcribed_paths"
     }
 }

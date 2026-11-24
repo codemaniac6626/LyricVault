@@ -23,7 +23,9 @@ import com.example.ai.DeviceTiers
 import com.example.ai.GeminiClient
 import com.example.ai.ModelCatalog
 import com.example.ai.ModelDownloadWorker
+import com.example.ai.TranscriptionWorker
 import com.example.ai.ModelStore
+import com.example.data.local.BlockType
 import com.example.data.local.IdeaBlockEntity
 import com.example.data.local.IdeaNoteEntity
 import com.example.data.local.IdeaNoteWithDetails
@@ -104,6 +106,9 @@ data class AiUiState(
     val geminiModel: String = GeminiClient.DEFAULT_LLM_MODEL,
     val customInstruction: String = "",
     val hasGeminiKey: Boolean = false,
+    val transcriptionEnabled: Boolean = false,
+    val transcriptionProvider: String = "groq",
+    val hasGroqKey: Boolean = false,
     val keyStorageEncrypted: Boolean = true,
     val downloads: Map<String, AiDownloadState> = emptyMap(),
     val embeddedCount: Int = 0,
@@ -238,6 +243,20 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
             runCatching {
                 repository.getIdeaOnce(savedId)?.let { aiService.embedIdea(it) }
             }
+            // Queue background transcription for any recorded clips in
+            // this idea (a no-op unless transcription is enabled with a
+            // provider key). WorkManager finishes it even if the app is
+            // closed right after saving.
+            blocks.filter {
+                it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank()
+            }.forEach { block ->
+                TranscriptionWorker.enqueue(
+                    getApplication(),
+                    TranscriptionWorker.TARGET_IDEA,
+                    savedId,
+                    block.audioFilePath!!
+                )
+            }
             refreshAiState()
         }
     }
@@ -286,6 +305,14 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 label = "",
                 audioFilePath = recorded.filePath,
                 audioDurationMs = recorded.durationMs
+            )
+            // Background transcription gives the melody a summary label
+            // (songs have no block stream, so no transcript block there).
+            TranscriptionWorker.enqueue(
+                getApplication(),
+                TranscriptionWorker.TARGET_SONG,
+                songId,
+                recorded.filePath
             )
             _snackbarMessage.value = "Melody added to this song."
         }
@@ -411,6 +438,9 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 geminiModel = aiSettings.geminiModel,
                 customInstruction = aiSettings.customInstruction,
                 hasGeminiKey = apiKeyStore.hasGeminiKey(),
+                transcriptionEnabled = aiSettings.transcriptionEnabled,
+                transcriptionProvider = aiSettings.transcriptionProvider,
+                hasGroqKey = apiKeyStore.hasGroqKey(),
                 keyStorageEncrypted = apiKeyStore.storageEncrypted,
                 downloads = downloads,
                 embeddedCount = embedded,
@@ -724,6 +754,28 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
             )
             refreshAiState()
         }
+    }
+
+    // ---- Audio transcription settings ----
+
+    fun setTranscriptionEnabled(enabled: Boolean) {
+        aiSettings.transcriptionEnabled = enabled
+        refreshAiState()
+    }
+
+    fun saveGroqKey(key: String) {
+        if (key.isBlank()) {
+            _snackbarMessage.value = "Paste your Groq API key first."
+            return
+        }
+        apiKeyStore.setGroqKey(key)
+        _snackbarMessage.value = "Groq key saved."
+        refreshAiState()
+    }
+
+    fun clearGroqKey() {
+        apiKeyStore.clearGroqKey()
+        refreshAiState()
     }
 
     fun reembedVault() {

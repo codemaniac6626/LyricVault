@@ -6,7 +6,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
 /**
- * Stores the user's Gemini API key in EncryptedSharedPreferences
+ * Stores the user's cloud API keys (Gemini, Groq) in EncryptedSharedPreferences
  * (AES-256, backed by the Android KeyStore). The key never leaves the device
  * except in the `x-goog-api-key` header of Gemini API calls, and is never
  * logged, backed up in the JSON export, or written to any other file.
@@ -63,7 +63,21 @@ class ApiKeyStore(context: Context) {
         prefs.edit().remove(KEY_GEMINI).apply()
     }
 
+    fun getGroqKey(): String? =
+        prefs.getString(KEY_GROQ, null)?.takeIf { it.isNotBlank() }
+
+    fun hasGroqKey(): Boolean = getGroqKey() != null
+
+    fun setGroqKey(key: String) {
+        prefs.edit().putString(KEY_GROQ, key.trim()).apply()
+    }
+
+    fun clearGroqKey() {
+        prefs.edit().remove(KEY_GROQ).apply()
+    }
+
     private companion object {
         const val KEY_GEMINI = "gemini_api_key"
+        const val KEY_GROQ = "groq_api_key"
     }
 }

@@ -51,6 +51,18 @@ interface LyricVaultDao {
     @Query("DELETE FROM idea_blocks WHERE ideaId = :ideaId")
     suspend fun deleteBlocksForIdea(ideaId: Long)
 
+    /**
+     * Make room for a block to be inserted after [afterIndex] (used by
+     * background transcription landing a transcript under its audio
+     * block). Touches block rows only — the idea's updatedAt is
+     * deliberately left alone.
+     */
+    @Query(
+        "UPDATE idea_blocks SET orderIndex = orderIndex + 1 " +
+            "WHERE ideaId = :ideaId AND orderIndex > :afterIndex"
+    )
+    suspend fun shiftBlockOrderAfter(ideaId: Long, afterIndex: Int)
+
     @Query("SELECT * FROM songs ORDER BY updatedAt DESC")
     fun observeAllSongs(): Flow<List<SongEntity>>
 
