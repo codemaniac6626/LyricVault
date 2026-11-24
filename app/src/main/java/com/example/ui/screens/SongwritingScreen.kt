@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -793,6 +794,14 @@ fun SongwritingScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        // The dialog window does not resize for the keyboard
+                        // (decorFitsSystemWindows = false), so consume the IME
+                        // inset here: without it the keyboard draws over the
+                        // bottom of the text field and its last lines can
+                        // never be scrolled into view. With imePadding the
+                        // field's viewport ends at the top of the keyboard,
+                        // so scrolling reaches the final line.
+                        .imePadding()
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
