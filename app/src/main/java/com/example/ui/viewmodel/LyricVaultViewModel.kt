@@ -60,7 +60,8 @@ enum class VaultFilter {
     ALL,
     UNUSED,
     USED,
-    WITH_AUDIO
+    WITH_AUDIO,
+    HAS_IMAGES
 }
 
 sealed interface BackupOperationState {
@@ -207,6 +208,7 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 VaultFilter.UNUSED -> detail.idea.usedCount == 0
                 VaultFilter.USED -> detail.idea.usedCount > 0
                 VaultFilter.WITH_AUDIO -> detail.audioBlockCount > 0
+                VaultFilter.HAS_IMAGES -> detail.imageBlockCount > 0
             }
             val passesQuery = if (trimmed.isEmpty()) {
                 true
