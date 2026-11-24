@@ -187,7 +187,8 @@ fun VaultScreen(
                                 VaultFilter.ALL to "All ($allIdeasCount)",
                                 VaultFilter.UNUSED to "Fresh ($unusedIdeasCount)",
                                 VaultFilter.USED to "Used (${(allIdeasCount - unusedIdeasCount).coerceAtLeast(0)})",
-                                VaultFilter.WITH_AUDIO to "Has Audio"
+                                VaultFilter.WITH_AUDIO to "Has Audio",
+                                VaultFilter.HAS_IMAGES to "Has images"
                             )
                             items(chips) { (filter, label) ->
                                 FilterChip(
