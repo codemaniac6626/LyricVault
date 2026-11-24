@@ -96,17 +96,20 @@ interface LyricVaultDao {
     @Query("SELECT * FROM idea_usages ORDER BY usedAt DESC")
     suspend fun getAllUsagesOnce(): List<IdeaUsageEntity>
 
-    @Query("UPDATE idea_notes SET usedCount = usedCount + 1, updatedAt = :timestamp WHERE id = :ideaId")
-    suspend fun incrementIdeaUsedCount(ideaId: Long, timestamp: Long = System.currentTimeMillis())
+    // Usage bookkeeping is NOT an edit of the idea itself, so none of
+    // these queries touch updatedAt: that timestamp means "the idea's
+    // content last changed" and nothing else.
+    @Query("UPDATE idea_notes SET usedCount = usedCount + 1 WHERE id = :ideaId")
+    suspend fun incrementIdeaUsedCount(ideaId: Long)
 
-    @Query("UPDATE idea_notes SET usedCount = CASE WHEN usedCount > 0 THEN usedCount - 1 ELSE 0 END, updatedAt = :timestamp WHERE id = :ideaId")
-    suspend fun decrementIdeaUsedCount(ideaId: Long, timestamp: Long = System.currentTimeMillis())
+    @Query("UPDATE idea_notes SET usedCount = CASE WHEN usedCount > 0 THEN usedCount - 1 ELSE 0 END WHERE id = :ideaId")
+    suspend fun decrementIdeaUsedCount(ideaId: Long)
 
     @Query("DELETE FROM idea_usages WHERE ideaId = :ideaId")
     suspend fun clearUsagesForIdea(ideaId: Long)
 
-    @Query("UPDATE idea_notes SET usedCount = 0, updatedAt = :timestamp WHERE id = :ideaId")
-    suspend fun resetIdeaUsedCount(ideaId: Long, timestamp: Long = System.currentTimeMillis())
+    @Query("UPDATE idea_notes SET usedCount = 0 WHERE id = :ideaId")
+    suspend fun resetIdeaUsedCount(ideaId: Long)
 
     // ---- Vector store: one embedding row per idea, per engine ----
 

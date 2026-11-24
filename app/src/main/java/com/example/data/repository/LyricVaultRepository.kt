@@ -191,7 +191,7 @@ class LyricVaultRepository(
 
     suspend fun markIdeaUsedInSong(ideaId: Long, songId: Long, songTitle: String) {
         val now = System.currentTimeMillis()
-        dao.incrementIdeaUsedCount(ideaId, now)
+        dao.incrementIdeaUsedCount(ideaId)
         if (songId > 0L) {
             dao.insertUsage(
                 IdeaUsageEntity(
