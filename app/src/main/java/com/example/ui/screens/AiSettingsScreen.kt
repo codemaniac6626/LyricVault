@@ -759,8 +759,6 @@ private fun GeminiByokSection(
 }
 
 @Composable
-
-@Composable
 private fun TranscriptionSection(
     aiState: AiUiState,
     viewModel: LyricVaultViewModel,
@@ -884,6 +882,7 @@ private fun TranscriptionSection(
     }
 }
 
+@Composable
 private fun GeminiStep(number: String, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
