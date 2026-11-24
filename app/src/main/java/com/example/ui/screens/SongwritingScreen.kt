@@ -125,6 +125,10 @@ fun SongwritingScreen(
 ) {
     var currentSongId by remember { mutableLongStateOf(songId ?: 0L) }
     var createdAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // Signature of the song exactly as loaded (and as last saved), so
+    // persistSong can tell "opened and closed" from "actually edited":
+    // updatedAt must move only when the song itself changes.
+    var loadedSongSignature by remember { mutableStateOf<String?>(null) }
     var songTitle by remember { mutableStateOf("") }
     var vibeDescription by remember { mutableStateOf("") }
     var lyricsField by remember { mutableStateOf(TextFieldValue("")) }
@@ -195,6 +199,10 @@ fun SongwritingScreen(
                 vibeDescription = loaded.vibeDescription
                 lyricsField = TextFieldValue(loaded.lyrics)
                 songInstruction = loaded.customInstruction ?: ""
+                loadedSongSignature = listOf(
+                    loaded.title, loaded.vibeDescription, loaded.lyrics,
+                    loaded.customInstruction ?: ""
+                ).joinToString("\u0001")
             }
         }
         isLoaded = true
@@ -294,11 +302,28 @@ fun SongwritingScreen(
         )
     }
 
+    fun currentSongSignature(): String = listOf(
+        songTitle.trim(),
+        vibeDescription.trim(),
+        lyricsField.text,
+        songInstruction.trim()
+    ).joinToString("\u0001")
+
     fun persistSong(force: Boolean = false, then: (Long) -> Unit = {}) {
         val hasAny = songTitle.isNotBlank() || vibeDescription.isNotBlank() ||
             lyricsField.text.isNotBlank() || songInstruction.isNotBlank()
         if (!hasAny && currentSongId == 0L && !force) {
             then(0L)
+            return
+        }
+        // Opened-and-closed is not an edit: when nothing differs from
+        // the loaded (or last-saved) state, skip the save entirely so
+        // the song's updatedAt — and its place in the songs list —
+        // stays exactly where it was.
+        if (!force && currentSongId > 0L && loadedSongSignature != null &&
+            currentSongSignature() == loadedSongSignature
+        ) {
+            then(currentSongId)
             return
         }
         val entity = SongEntity(
@@ -312,6 +337,7 @@ fun SongwritingScreen(
         )
         viewModel.saveSong(entity) { savedId ->
             currentSongId = savedId
+            loadedSongSignature = currentSongSignature()
             then(savedId)
         }
     }
@@ -588,16 +614,12 @@ fun SongwritingScreen(
                             },
                             modifier = Modifier.testTag("songwriting_tab_suggestions")
                         ) {
-                            // Cap the badge at 9+: an exact count makes
-                            // the segmented tab resize (and re-wrap) every
-                            // time the digit count changes, which is
-                            // distracting while writing.
-                            val badge = when {
-                                matchResult.totalCount > 9 -> " (9+)"
-                                matchResult.totalCount > 0 -> " (${matchResult.totalCount})"
-                                else -> ""
-                            }
-                            Text("Vault Matches$badge", maxLines = 1)
+                            // No count badge on this tab: the number
+                            // made the segmented control resize as it
+                            // changed. The label stays static, exactly
+                            // like the Write Lyrics tab — the pane itself
+                            // still shows how many ideas matched.
+                            Text("Vault Matches", maxLines = 1)
                         }
                     }
 

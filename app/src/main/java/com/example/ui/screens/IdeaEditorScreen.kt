@@ -118,6 +118,10 @@ fun IdeaEditorScreen(
     var contextNote by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
     var usedCount by remember { mutableIntStateOf(0) }
+    // Signature of the idea exactly as loaded, so persistAndExit can
+    // tell "opened and closed" from "actually edited": updatedAt must
+    // move only when the idea itself changes.
+    var loadedSignature by remember { mutableStateOf<String?>(null) }
     var usages by remember { mutableStateOf<List<IdeaUsageEntity>>(emptyList()) }
     val blocks = remember { mutableStateListOf<EditableBlock>() }
     var isLoaded by remember { mutableStateOf(false) }
@@ -167,6 +171,22 @@ fun IdeaEditorScreen(
         }
     }
 
+    fun currentIdeaSignature(): String {
+        val savedBlocks = blocks.filter {
+            it.blockType == BlockType.AUDIO ||
+                (it.blockType == BlockType.IMAGE && !it.imageFilePath.isNullOrBlank()) ||
+                it.textContent.isNotBlank() || blocks.size == 1
+        }
+        val blockPart = savedBlocks.joinToString("\u0002") { b ->
+            listOf(
+                b.blockType, b.textContent, b.audioFilePath ?: "",
+                b.imageFilePath ?: "", b.audioDurationMs.toString()
+            ).joinToString("\u0001")
+        }
+        return listOf(title.trim(), contextNote.trim(), tags.trim())
+            .joinToString("\u0001") + "\u0003" + blockPart
+    }
+
     LaunchedEffect(ideaId) {
         if (ideaId != null && ideaId > 0L) {
             val loaded = viewModel.loadIdeaOnce(ideaId)
@@ -196,6 +216,7 @@ fun IdeaEditorScreen(
         if (blocks.isEmpty()) {
             blocks.add(EditableBlock(blockType = BlockType.TEXT, textContent = ""))
         }
+        if (currentId > 0L) loadedSignature = currentIdeaSignature()
         isLoaded = true
     }
 
@@ -234,7 +255,13 @@ fun IdeaEditorScreen(
             }
         }
         viewModel.audioPlayer.stop()
-        if (hasContentToSave()) {
+        // Opened-and-closed is not an edit: an unchanged idea is not
+        // re-saved, so its updatedAt stays where it was. (A recording
+        // stopped above has already landed in blocks, so it counts as
+        // a change and still saves.)
+        val unchanged = currentId > 0L && loadedSignature != null &&
+            currentIdeaSignature() == loadedSignature
+        if (hasContentToSave() && !unchanged) {
             val entity = IdeaNoteEntity(
                 id = currentId,
                 title = title.trim(),
