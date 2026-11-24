@@ -76,6 +76,7 @@ import com.example.ui.viewmodel.KeyTestState
 import com.example.ui.viewmodel.LyricVaultViewModel
 
 private const val GEMINI_KEY_URL = "https://aistudio.google.com/apikey"
+private const val GROQ_KEY_URL = "https://console.groq.com/keys"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,7 +116,7 @@ fun AiSettingsScreen(
                 Text(
                     text = "On-device AI finds ideas by meaning, not just shared words — " +
                         "and explains why a match fits. Everything runs on your phone; " +
-                        "nothing leaves it unless you choose Gemini below.",
+                        "nothing leaves it unless you choose a cloud option below.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -390,6 +391,19 @@ fun AiSettingsScreen(
                     onOpenKeyPage = {
                         context.startActivity(
                             Intent(Intent.ACTION_VIEW, Uri.parse(GEMINI_KEY_URL))
+                        )
+                    }
+                )
+            }
+
+            // ---- Audio transcription ----
+            item(key = "transcription_section") {
+                TranscriptionSection(
+                    aiState = aiState,
+                    viewModel = viewModel,
+                    onOpenKeyPage = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(GROQ_KEY_URL))
                         )
                     }
                 )
@@ -745,6 +759,131 @@ private fun GeminiByokSection(
 }
 
 @Composable
+
+@Composable
+private fun TranscriptionSection(
+    aiState: AiUiState,
+    viewModel: LyricVaultViewModel,
+    onOpenKeyPage: () -> Unit
+) {
+    var keyInput by remember { mutableStateOf("") }
+    var keyVisible by remember { mutableStateOf(false) }
+
+    AiSectionCard(title = "Audio transcription") {
+        Text(
+            text = "When you record a voice idea, it is transcribed in the " +
+                "background — even if you close the app straight after. The " +
+                "full transcript is added as a text block right under the " +
+                "recording, and a short generated summary becomes the " +
+                "recording's label, so spoken ideas can be found and matched " +
+                "by what you said. Transcription never changes a note's " +
+                "edited time, and never overwrites a label you typed yourself.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Transcribe recordings",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text(
+                    text = "Provider: Groq Whisper (whisper-large-v3) — " +
+                        "your audio goes to Groq only while this is on.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = aiState.transcriptionEnabled,
+                onCheckedChange = { viewModel.setTranscriptionEnabled(it) },
+                modifier = Modifier.testTag("transcription_enabled_switch")
+            )
+        }
+
+        if (aiState.transcriptionEnabled) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "How to get a key",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                GeminiStep("1", "Open Groq's API key page:")
+                OutlinedButton(onClick = onOpenKeyPage) {
+                    Icon(imageVector = Icons.Filled.OpenInBrowser, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("console.groq.com/keys")
+                }
+                GeminiStep("2", "Sign in and tap \u201cCreate API Key\u201d. Groq's free tier needs no card.")
+                GeminiStep("3", "Copy the key and paste it below.")
+            }
+
+            OutlinedTextField(
+                value = keyInput,
+                onValueChange = { keyInput = it },
+                label = { Text("Groq API key") },
+                placeholder = {
+                    Text(
+                        if (aiState.hasGroqKey) "Key saved — type a new key to replace it"
+                        else "Paste your key here"
+                    )
+                },
+                visualTransformation = if (keyVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    IconButton(onClick = { keyVisible = !keyVisible }) {
+                        Icon(
+                            imageVector = if (keyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (keyVisible) "Hide key" else "Show key"
+                        )
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("transcription_key_input")
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = {
+                        viewModel.saveGroqKey(keyInput.trim())
+                        keyInput = ""
+                    },
+                    enabled = keyInput.isNotBlank(),
+                    modifier = Modifier.testTag("transcription_save_key")
+                ) {
+                    Text("Save key")
+                }
+                if (aiState.hasGroqKey) {
+                    TextButton(onClick = { viewModel.clearGroqKey() }) { Text("Remove key") }
+                }
+            }
+
+            if (!aiState.keyStorageEncrypted) {
+                Text(
+                    text = "Note: this device could not provide encrypted " +
+                        "key storage, so the key is kept in plain app storage.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
 private fun GeminiStep(number: String, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
