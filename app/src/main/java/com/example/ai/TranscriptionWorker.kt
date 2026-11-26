@@ -32,7 +32,9 @@ import java.util.concurrent.TimeUnit
  * after the audio block, and a short generated summary becomes the
  * audio block's label. Only idea audio blocks whose per-clip toggle
  * the user switched on are ever queued, so the summary always lands
- * as the label for those clips (replacing any earlier caption). There
+ * as the label for those clips (replacing any earlier caption). The
+ * toggle is edge-triggered: switching a clip off and on again and
+ * saving re-transcribes it, adding another transcript block. There
  * is no transcription in songwriting mode.
  *
  * None of the writes touch the parent idea/song row, so the note's
@@ -54,9 +56,6 @@ class TranscriptionWorker(
         val audioPath = inputData.getString(KEY_AUDIO_PATH)
             ?: return@withContext Result.failure()
         if (ownerId <= 0L) return@withContext Result.failure()
-
-        val settings = AiSettings(applicationContext)
-        if (settings.isTranscribed(audioPath)) return@withContext Result.success()
 
         val audioFile = File(audioPath)
         // Clip deleted meanwhile: nothing to transcribe, ever.
@@ -91,7 +90,6 @@ class TranscriptionWorker(
             TARGET_IDEA -> applyToIdea(dao, ownerId, audioPath, transcript, summary)
             else -> return@withContext Result.failure()
         }
-        settings.markTranscribed(audioPath)
 
         // Refresh the idea's embedding so the transcript text takes part
         // in matching. Best-effort, exactly like the save path.
@@ -170,7 +168,9 @@ class TranscriptionWorker(
 
         /**
          * Queue transcription for one clip. No-op when transcription is
-         * off, no provider key is set, or the clip is already done.
+         * off or no provider key is set. Callers queue only on a toggle
+         * off -> on transition, so a clip CAN be transcribed again after
+         * being re-armed — each run adds a fresh transcript block.
          */
         fun enqueue(
             context: Context,
@@ -179,7 +179,6 @@ class TranscriptionWorker(
             audioPath: String
         ) {
             if (ownerId <= 0L || audioPath.isBlank()) return
-            if (AiSettings(context).isTranscribed(audioPath)) return
             if (TranscriptionProviders.create(context) == null) return
             val request = OneTimeWorkRequestBuilder<TranscriptionWorker>()
                 .setInputData(
