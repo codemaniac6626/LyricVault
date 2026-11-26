@@ -45,7 +45,13 @@ data class IdeaBlockEntity(
     val audioFilePath: String? = null,
     val audioDurationMs: Long = 0L,
     val imageFilePath: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * Per-clip opt-in for cloud transcription (audio blocks in ideas
+     * only): false by default; the editor's per-audio toggle sets it.
+     * Only clips with this on are queued for transcription on save.
+     */
+    val transcriptionEnabled: Boolean = false
 )
 
 @Entity(tableName = "songs")

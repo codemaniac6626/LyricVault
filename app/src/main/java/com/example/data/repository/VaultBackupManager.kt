@@ -89,6 +89,7 @@ class VaultBackupManager(
                             put("textContent", block.textContent)
                             put("audioDurationMs", block.audioDurationMs)
                             put("createdAt", block.createdAt)
+                            put("transcriptionEnabled", block.transcriptionEnabled)
                             if (includeAudioBase64 && block.blockType == BlockType.AUDIO && !block.audioFilePath.isNullOrBlank()) {
                                 val file = File(block.audioFilePath)
                                 if (file.exists() && file.length() <= 12L * 1024L * 1024L) {
@@ -685,6 +686,7 @@ class VaultBackupManager(
         var text = ""
         var duration = 0L
         var created = now
+        var transcribe = false
         var audioB64: String? = null
         var imageB64: String? = null
         var imageExt = "jpg"
@@ -696,6 +698,7 @@ class VaultBackupManager(
                 "textContent" -> text = reader.nextStringOr("")
                 "audioDurationMs" -> duration = reader.nextLongOr(0L)
                 "createdAt" -> created = reader.nextLongOr(now)
+                "transcriptionEnabled" -> transcribe = reader.nextBooleanOr(false)
                 "audioBase64" -> audioB64 = reader.nextStringOrNull()
                 "imageBase64" -> imageB64 = reader.nextStringOrNull()
                 "imageExt" -> imageExt = reader.nextStringOr("jpg")
@@ -732,7 +735,8 @@ class VaultBackupManager(
             audioFilePath = audioPath,
             audioDurationMs = duration,
             imageFilePath = imagePath,
-            createdAt = created
+            createdAt = created,
+            transcriptionEnabled = transcribe
         )
     }
 

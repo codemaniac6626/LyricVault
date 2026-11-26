@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IdeaUsageEntity::class,
         IdeaEmbeddingEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class LyricVaultDatabase : RoomDatabase() {
@@ -103,13 +103,27 @@ abstract class LyricVaultDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 -> v6: adds the `transcriptionEnabled` column to idea_blocks
+         * (per-audio opt-in for cloud transcription, off by default).
+         * ALTER TABLE keeps every existing row intact; existing clips
+         * stay opted out until the user flips their toggle in the editor.
+         */
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `idea_blocks` ADD COLUMN `transcriptionEnabled` INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         fun getInstance(context: Context): LyricVaultDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     LyricVaultDatabase::class.java,
                     "lyric_vault.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { INSTANCE = it }
             }
         }
     }

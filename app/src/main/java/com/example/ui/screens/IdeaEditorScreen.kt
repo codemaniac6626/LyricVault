@@ -95,7 +95,8 @@ private data class EditableBlock(
     val audioFilePath: String? = null,
     val audioDurationMs: Long = 0L,
     val imageFilePath: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val transcriptionEnabled: Boolean = false
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -180,7 +181,8 @@ fun IdeaEditorScreen(
         val blockPart = savedBlocks.joinToString("\u0002") { b ->
             listOf(
                 b.blockType, b.textContent, b.audioFilePath ?: "",
-                b.imageFilePath ?: "", b.audioDurationMs.toString()
+                b.imageFilePath ?: "", b.audioDurationMs.toString(),
+                b.transcriptionEnabled.toString()
             ).joinToString("\u0001")
         }
         return listOf(title.trim(), contextNote.trim(), tags.trim())
@@ -207,7 +209,8 @@ fun IdeaEditorScreen(
                             audioFilePath = b.audioFilePath,
                             audioDurationMs = b.audioDurationMs,
                             imageFilePath = b.imageFilePath,
-                            createdAt = b.createdAt
+                            createdAt = b.createdAt,
+                            transcriptionEnabled = b.transcriptionEnabled
                         )
                     )
                 }
@@ -286,7 +289,8 @@ fun IdeaEditorScreen(
                         audioFilePath = b.audioFilePath,
                         audioDurationMs = b.audioDurationMs,
                         imageFilePath = b.imageFilePath,
-                        createdAt = b.createdAt
+                        createdAt = b.createdAt,
+                        transcriptionEnabled = b.transcriptionEnabled
                     )
                 }
             viewModel.saveIdea(entity, blockEntities) {
@@ -407,8 +411,9 @@ fun IdeaEditorScreen(
                                             audioDurationMs = recorded.durationMs
                                         )
                                     )
-                                    // Immediately add a fresh text block underneath for two-and-fro writing
-                                    blocks.add(EditableBlock(blockType = BlockType.TEXT, textContent = ""))
+                                    // No automatic text block after a recording:
+                                    // the audio stands on its own, and the user
+                                    // adds a text block themselves if they want one.
                                 }
                             },
                             onCancel = { viewModel.cancelRecordingAudio() }
@@ -798,6 +803,10 @@ fun IdeaEditorScreen(
                             editable = true,
                             onCaptionChange = { updated ->
                                 blocks[index] = block.copy(textContent = updated)
+                            },
+                            transcriptionEnabled = block.transcriptionEnabled,
+                            onTranscriptionToggle = { enabled ->
+                                blocks[index] = block.copy(transcriptionEnabled = enabled)
                             },
                             onMoveUp = if (index > 0) {
                                 { Collections.swap(blocks, index, index - 1) }
