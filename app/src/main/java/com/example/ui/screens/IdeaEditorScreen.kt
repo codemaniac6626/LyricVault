@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -496,13 +499,38 @@ fun IdeaEditorScreen(
                             )
                         }
                     }
+                    // When this save will queue a transcription, the Save
+                    // button keeps its "Save" label but lights up with a
+                    // coral-to-amber gradient (the mic and idea accents)
+                    // over a transparent container, with dark ink content
+                    // for contrast.
                     Button(
                         onClick = { persist() },
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                        colors = if (transcriptionPending) {
+                            ButtonDefaults.buttonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = Color(0xFF20130A)
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors()
+                        },
                         modifier = Modifier
                             .padding(end = 12.dp)
                             .height(40.dp)
+                            .then(
+                                if (transcriptionPending) {
+                                    Modifier.background(
+                                        brush = Brush.horizontalGradient(
+                                            listOf(Color(0xFFE07A5F), Color(0xFFF5A623))
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
                             .testTag("idea_editor_save_button")
                     ) {
                         Icon(
@@ -511,7 +539,7 @@ fun IdeaEditorScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (transcriptionPending) "Save and Transcribe" else "Save")
+                        Text("Save")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
