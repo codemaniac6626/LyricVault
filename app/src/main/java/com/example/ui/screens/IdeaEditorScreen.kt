@@ -55,6 +55,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -136,6 +137,7 @@ fun IdeaEditorScreen(
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val aiUiState by viewModel.aiUiState.collectAsState()
 
     var currentId by remember { mutableLongStateOf(ideaId ?: 0L) }
     var createdAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -443,6 +445,23 @@ fun IdeaEditorScreen(
         }
     }
 
+    // The Save button advertises transcription only when this save
+    // will actually queue some: transcription usable (master switch
+    // on + Groq key present — the same gate the save path applies)
+    // and at least one audio block whose toggle just switched on
+    // relative to the last synced state, which is exactly the
+    // condition saveIdea queues transcription on.
+    val syncedToggles = syncedBlocks
+        .filter { it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank() }
+        .associate { it.audioFilePath!! to it.transcriptionEnabled }
+    val transcriptionPending =
+        aiUiState.transcriptionEnabled && aiUiState.hasGroqKey &&
+            blocks.any { b ->
+                b.blockType == BlockType.AUDIO && b.transcriptionEnabled &&
+                    !b.audioFilePath.isNullOrBlank() &&
+                    syncedToggles[b.audioFilePath] != true
+            }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -492,7 +511,7 @@ fun IdeaEditorScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Save")
+                        Text(if (transcriptionPending) "Save and Transcribe" else "Save")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
