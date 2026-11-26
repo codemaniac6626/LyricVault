@@ -256,6 +256,22 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
         onSaved: (Long) -> Unit = {}
     ) {
         viewModelScope.launch {
+            // Transcription is edge-triggered by the per-audio toggle:
+            // capture the persisted toggle states BEFORE this save
+            // overwrites them, so a clip is (re-)queued only when its
+            // toggle moves off -> on (a brand-new clip counts as off).
+            // Saving with the toggle already on does not re-transcribe.
+            val previousToggles: Map<String, Boolean> = if (idea.id > 0L) {
+                repository.getIdeaOnce(idea.id)?.orderedBlocks
+                    ?.filter {
+                        it.blockType == BlockType.AUDIO &&
+                            !it.audioFilePath.isNullOrBlank()
+                    }
+                    ?.associate { it.audioFilePath!! to it.transcriptionEnabled }
+                    ?: emptyMap()
+            } else {
+                emptyMap()
+            }
             val savedId = repository.saveIdea(idea, blocks)
             onSaved(savedId)
             // Keep the vector store fresh: embed the saved idea in the
@@ -263,14 +279,17 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
             runCatching {
                 repository.getIdeaOnce(savedId)?.let { aiService.embedIdea(it) }
             }
-            // Queue background transcription for the recorded clips in
-            // this idea whose per-audio toggle is on (a no-op unless
-            // transcription is also enabled with a provider key).
-            // WorkManager finishes it even if the app is closed right
-            // after saving.
+            // Queue background transcription for the clips whose toggle
+            // just switched on (see previousToggles above) — including
+            // clips in older notes toggled on later, and clips re-armed
+            // by an off -> on cycle after an earlier transcription.
+            // A no-op unless transcription is also enabled with a
+            // provider key. WorkManager finishes it even if the app is
+            // closed right after saving.
             blocks.filter {
                 it.blockType == BlockType.AUDIO && it.transcriptionEnabled &&
-                    !it.audioFilePath.isNullOrBlank()
+                    !it.audioFilePath.isNullOrBlank() &&
+                    previousToggles[it.audioFilePath] != true
             }.forEach { block ->
                 TranscriptionWorker.enqueue(
                     getApplication(),
