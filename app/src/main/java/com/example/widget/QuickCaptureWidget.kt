@@ -14,13 +14,12 @@ import com.example.MainActivity
 import com.example.R
 
 /**
- * The 4x2 home-screen quick-capture widget: a slim header row (app icon +
- * name) on top of three tiles in a row — "Catch a quick idea", "Record a
- * melody" and "Write a song". Tapping the header opens the app's home
- * screen via the plain launcher intent. Each tile fires a PendingIntent
- * that opens MainActivity with the matching [WidgetActions] action;
- * MainActivity and the navigation layer turn that into the same screen
- * the in-app buttons open.
+ * The 4x2 home-screen quick-capture widget: four tiles in a row —
+ * "Catch a quick idea", "Record a melody", "Write a song" and "Home".
+ * The first three fire PendingIntents that open MainActivity with the
+ * matching [WidgetActions] action; MainActivity and the navigation
+ * layer turn that into the same screen the in-app buttons open. The
+ * Home tile opens the app's home screen via the plain launcher intent.
  */
 class QuickCaptureWidget : AppWidgetProvider() {
 
@@ -54,17 +53,10 @@ class QuickCaptureWidget : AppWidgetProvider() {
             R.id.widget_icon_song,
             vectorToBitmap(context, R.drawable.ic_widget_song)
         )
-        // Same bitmap treatment for the header's app icon: the launcher
-        // icon is an adaptive icon, and handing the launcher a plain
-        // bitmap (rasterised here from the installed app's icon) avoids
-        // the same in-launcher inflation risk as the tile vectors.
         views.setImageViewBitmap(
-            R.id.widget_icon_app,
-            appIconBitmap(context)
+            R.id.widget_icon_home,
+            vectorToBitmap(context, R.drawable.ic_widget_home)
         )
-        val openApp = openAppIntent(context)
-        views.setOnClickPendingIntent(R.id.widget_header, openApp)
-        views.setOnClickPendingIntent(R.id.widget_icon_app, openApp)
         views.setOnClickPendingIntent(
             R.id.widget_tile_idea,
             tileIntent(context, WidgetActions.NEW_IDEA, REQUEST_NEW_IDEA)
@@ -77,18 +69,12 @@ class QuickCaptureWidget : AppWidgetProvider() {
             R.id.widget_tile_song,
             tileIntent(context, WidgetActions.NEW_SONG, REQUEST_NEW_SONG)
         )
+        views.setOnClickPendingIntent(R.id.widget_tile_home, openAppIntent(context))
         return views
     }
 
     private fun vectorToBitmap(context: Context, resId: Int): Bitmap =
         drawableToBitmap(context, context.getDrawable(resId)!!, ICON_SIZE_DP)
-
-    private fun appIconBitmap(context: Context): Bitmap =
-        drawableToBitmap(
-            context,
-            context.packageManager.getApplicationIcon(context.packageName),
-            HEADER_ICON_SIZE_DP
-        )
 
     private fun drawableToBitmap(
         context: Context,
@@ -142,7 +128,6 @@ class QuickCaptureWidget : AppWidgetProvider() {
 
     private companion object {
         const val ICON_SIZE_DP = 30
-        const val HEADER_ICON_SIZE_DP = 24
         const val REQUEST_OPEN_APP = 100
         const val REQUEST_NEW_IDEA = 101
         const val REQUEST_RECORD_MELODY = 102

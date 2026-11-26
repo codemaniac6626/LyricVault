@@ -1,51 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One wide (4x2) widget: a slim header row on top (app icon + name,
-     tapping it opens the app's home screen) and three equal tiles in a
-     row below. Colours mirror the app's dark "Analog Midnight Studio"
-     theme (StudioSurface / StudioSurfaceHigh / StudioInk) so the widget
-     sits naturally next to the app icon; each tile's icon uses its accent
-     colour (amber / coral / mint). -->
+<!-- One wide (4x2) widget: four equal tiles in a row — "Home" (opens
+     the app's home screen), "Catch a quick idea", "Record a melody"
+     and "Write a song". Colours mirror the app's dark "Analog Midnight
+     Studio" theme (StudioSurface / StudioSurfaceHigh / StudioInk) so
+     the widget sits naturally next to the app icon; each tile's icon
+     uses its accent colour (amber / coral / mint / sky). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:padding="12dp">
 
     <LinearLayout
-        android:id="@+id/widget_header"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:id="@+id/widget_tile_home"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="match_parent"
+        android:layout_marginEnd="6dp"
+        android:background="@drawable/widget_tile_background"
         android:clickable="true"
         android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="4dp"
-        android:paddingEnd="4dp">
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
 
         <ImageView
-            android:id="@+id/widget_icon_app"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:contentDescription="@string/app_name" />
+            android:id="@+id/widget_icon_home"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:contentDescription="@string/widget_tile_home" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="@string/app_name"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:text="@string/widget_tile_home"
             android:textColor="#F2F0EA"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:textSize="13sp" />
     </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:orientation="horizontal">
-
     <LinearLayout
         android:id="@+id/widget_tile_idea"
         android:layout_width="0dp"
@@ -74,7 +68,6 @@
             android:textColor="#F2F0EA"
             android:textSize="13sp" />
     </LinearLayout>
-
     <LinearLayout
         android:id="@+id/widget_tile_record"
         android:layout_width="0dp"
@@ -103,13 +96,11 @@
             android:textColor="#F2F0EA"
             android:textSize="13sp" />
     </LinearLayout>
-
     <LinearLayout
         android:id="@+id/widget_tile_song"
         android:layout_width="0dp"
         android:layout_weight="1"
         android:layout_height="match_parent"
-        
         android:background="@drawable/widget_tile_background"
         android:clickable="true"
         android:focusable="true"
@@ -131,6 +122,5 @@
             android:text="@string/widget_tile_song"
             android:textColor="#F2F0EA"
             android:textSize="13sp" />
-    </LinearLayout>
     </LinearLayout>
 </LinearLayout>
