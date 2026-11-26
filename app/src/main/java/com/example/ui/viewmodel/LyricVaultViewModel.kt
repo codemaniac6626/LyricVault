@@ -248,6 +248,9 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
 
     suspend fun loadIdeaOnce(ideaId: Long): IdeaNoteWithDetails? = repository.getIdeaOnce(ideaId)
 
+    /** Live view of one idea, for the editor's background merge. */
+    fun observeIdea(ideaId: Long): Flow<IdeaNoteWithDetails?> = repository.observeIdea(ideaId)
+
     suspend fun loadSongOnce(songId: Long): SongEntity? = repository.getSongOnce(songId)
 
     fun saveIdea(

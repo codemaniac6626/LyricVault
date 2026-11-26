@@ -99,6 +99,30 @@ private data class EditableBlock(
     val transcriptionEnabled: Boolean = false
 )
 
+/**
+ * Identity key used by the editor's live merge to match blocks between
+ * the open editor and the database: audio and image blocks by their
+ * file path (unique per file, stable across saves), text blocks by
+ * createdAt (also preserved across editor saves — a background
+ * transcript's createdAt sits 1 ms after its audio block's).
+ */
+private fun blockKey(
+    blockType: String,
+    audioFilePath: String?,
+    imageFilePath: String?,
+    createdAt: Long
+): String = when (blockType) {
+    BlockType.AUDIO -> "audio:" + (audioFilePath ?: "")
+    BlockType.IMAGE -> "image:" + (imageFilePath ?: "")
+    else -> "text:" + createdAt
+}
+
+private fun blockKey(block: IdeaBlockEntity): String =
+    blockKey(block.blockType, block.audioFilePath, block.imageFilePath, block.createdAt)
+
+private fun blockKey(block: EditableBlock): String =
+    blockKey(block.blockType, block.audioFilePath, block.imageFilePath, block.createdAt)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun IdeaEditorScreen(
@@ -125,6 +149,12 @@ fun IdeaEditorScreen(
     var loadedSignature by remember { mutableStateOf<String?>(null) }
     var usages by remember { mutableStateOf<List<IdeaUsageEntity>>(emptyList()) }
     val blocks = remember { mutableStateListOf<EditableBlock>() }
+    // The block state this editor last reconciled with the database
+    // (at load, after each save, after each background merge). The
+    // live merge below diffs database emissions against it to tell
+    // "a transcript landed in the background" apart from the user's
+    // own unsaved edits and deletions.
+    var syncedBlocks by remember { mutableStateOf<List<IdeaBlockEntity>>(emptyList()) }
     var isLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var permissionDeniedNotice by remember { mutableStateOf(false) }
@@ -200,6 +230,7 @@ fun IdeaEditorScreen(
                 tags = loaded.idea.tags
                 usedCount = loaded.idea.usedCount
                 usages = loaded.usages
+                syncedBlocks = loaded.orderedBlocks
                 blocks.clear()
                 loaded.orderedBlocks.forEach { b ->
                     blocks.add(
@@ -230,6 +261,74 @@ fun IdeaEditorScreen(
         }
     }
 
+    // Live merge: while this editor is open, watch the idea in the
+    // database. Background transcription writes its transcript block
+    // (and the audio block's label) straight to the database; this
+    // folds those changes into the open editor so the user sees the
+    // transcript appear under its audio without leaving and reopening.
+    // The merge never touches the user's own in-progress work:
+    //  - a database block counts as NEW only when the database now
+    //    holds more blocks with its key than the last synced state
+    //    did — so a block the user deleted locally is not resurrected,
+    //    while a re-transcription's second transcript still arrives;
+    //  - an audio label is adopted only when the user has not typed
+    //    over the synced caption themselves.
+    LaunchedEffect(currentId, isLoaded) {
+        val observedId = currentId
+        if (!isLoaded || observedId <= 0L) return@LaunchedEffect
+        viewModel.observeIdea(observedId).collect { detail ->
+            if (detail == null) return@collect
+            val dbBlocks = detail.orderedBlocks
+            val syncedCounts = syncedBlocks.groupingBy { blockKey(it) }.eachCount()
+            val seenCounts = mutableMapOf<String, Int>()
+            var anchor = -1
+            for (dbBlock in dbBlocks) {
+                val key = blockKey(dbBlock)
+                val occurrence = seenCounts.getOrDefault(key, 0)
+                seenCounts[key] = occurrence + 1
+                if (occurrence >= (syncedCounts[key] ?: 0)) {
+                    // New in the database since the last sync (a landed
+                    // transcript): insert it right after the previous
+                    // block, which the walk has already placed.
+                    val insertAt = (anchor + 1).coerceIn(0, blocks.size)
+                    blocks.add(
+                        insertAt,
+                        EditableBlock(
+                            blockType = dbBlock.blockType,
+                            textContent = dbBlock.textContent,
+                            audioFilePath = dbBlock.audioFilePath,
+                            audioDurationMs = dbBlock.audioDurationMs,
+                            imageFilePath = dbBlock.imageFilePath,
+                            createdAt = dbBlock.createdAt,
+                            transcriptionEnabled = dbBlock.transcriptionEnabled
+                        )
+                    )
+                    anchor = insertAt
+                } else {
+                    val matchIndex = ((anchor + 1) until blocks.size)
+                        .firstOrNull { blockKey(blocks[it]) == key }
+                        ?: blocks.indices.firstOrNull { blockKey(blocks[it]) == key }
+                    if (matchIndex != null) {
+                        anchor = matchIndex
+                        if (dbBlock.blockType == BlockType.AUDIO) {
+                            val syncedCaption = syncedBlocks
+                                .firstOrNull { blockKey(it) == key }?.textContent
+                            val editorBlock = blocks[matchIndex]
+                            if (dbBlock.textContent != syncedCaption &&
+                                editorBlock.textContent == syncedCaption
+                            ) {
+                                blocks[matchIndex] = editorBlock.copy(
+                                    textContent = dbBlock.textContent
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            syncedBlocks = dbBlocks
+        }
+    }
+
     fun hasContentToSave(): Boolean {
         if (title.isNotBlank() || contextNote.isNotBlank() || tags.isNotBlank()) return true
         return blocks.any {
@@ -239,7 +338,34 @@ fun IdeaEditorScreen(
         }
     }
 
-    fun persistAndExit() {
+    fun buildBlockEntities(): List<IdeaBlockEntity> = blocks
+        .filter {
+            it.blockType == BlockType.AUDIO ||
+                (it.blockType == BlockType.IMAGE && !it.imageFilePath.isNullOrBlank()) ||
+                it.textContent.isNotBlank() || blocks.size == 1
+        }
+        .mapIndexed { idx, b ->
+            IdeaBlockEntity(
+                ideaId = currentId,
+                orderIndex = idx,
+                blockType = b.blockType,
+                textContent = b.textContent,
+                audioFilePath = b.audioFilePath,
+                audioDurationMs = b.audioDurationMs,
+                imageFilePath = b.imageFilePath,
+                createdAt = b.createdAt,
+                transcriptionEnabled = b.transcriptionEnabled
+            )
+        }
+
+    /**
+     * The one save path, with two endings. [exit] = true leaves the
+     * editor (back button / system back); [exit] = false is the Save
+     * button: the idea is saved — which is also what triggers any
+     * pending transcription — and the editor STAYS OPEN, so the
+     * transcript block can land in it live via the merge below.
+     */
+    fun persistAndMaybeExit(exit: Boolean) {
         // Dismiss the keyboard and drop focus first: otherwise the IME stays
         // open over the list screen after navigating back.
         keyboardController?.hide()
@@ -274,32 +400,29 @@ fun IdeaEditorScreen(
                 createdAt = createdAt,
                 updatedAt = System.currentTimeMillis()
             )
-            val blockEntities = blocks
-                .filter {
-                    it.blockType == BlockType.AUDIO ||
-                        (it.blockType == BlockType.IMAGE && !it.imageFilePath.isNullOrBlank()) ||
-                        it.textContent.isNotBlank() || blocks.size == 1
+            val blockEntities = buildBlockEntities()
+            viewModel.saveIdea(entity, blockEntities) { savedId ->
+                if (exit) {
+                    onNavigateBack()
+                } else {
+                    // Staying open: the just-saved state becomes the
+                    // baseline, so leaving later without further edits
+                    // does not re-save, and the live merge diffs
+                    // against what was saved.
+                    currentId = savedId
+                    loadedSignature = currentIdeaSignature()
+                    syncedBlocks = blockEntities.map { it.copy(ideaId = savedId) }
+                    viewModel.showMessage("Idea saved.")
                 }
-                .mapIndexed { idx, b ->
-                    IdeaBlockEntity(
-                        ideaId = currentId,
-                        orderIndex = idx,
-                        blockType = b.blockType,
-                        textContent = b.textContent,
-                        audioFilePath = b.audioFilePath,
-                        audioDurationMs = b.audioDurationMs,
-                        imageFilePath = b.imageFilePath,
-                        createdAt = b.createdAt,
-                        transcriptionEnabled = b.transcriptionEnabled
-                    )
-                }
-            viewModel.saveIdea(entity, blockEntities) {
-                onNavigateBack()
             }
-        } else {
+        } else if (exit) {
             onNavigateBack()
         }
     }
+
+    fun persistAndExit() = persistAndMaybeExit(exit = true)
+
+    fun persist() = persistAndMaybeExit(exit = false)
 
     BackHandler {
         persistAndExit()
@@ -355,7 +478,7 @@ fun IdeaEditorScreen(
                         }
                     }
                     Button(
-                        onClick = { persistAndExit() },
+                        onClick = { persist() },
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                         modifier = Modifier
