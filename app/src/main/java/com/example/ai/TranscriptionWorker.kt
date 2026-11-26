@@ -24,15 +24,16 @@ import java.util.concurrent.TimeUnit
  * Background transcription of one recorded audio clip.
  *
  * Runs in WorkManager, so it finishes even when the app is closed right
- * after recording: the work is queued when the idea (or song) is saved,
+ * after recording: the work is queued when the idea is saved,
  * waits for a network connection, and retries with backoff on network
  * failures. A rejected API key fails permanently instead of looping.
  *
  * When it lands, the full transcript becomes a TEXT block immediately
- * after the audio block (ideas) and a short generated summary becomes
- * the audio block's label — but only when the user has not already
- * typed their own label. Song melody blocks have no block stream, so
- * they receive the summary label only.
+ * after the audio block, and a short generated summary becomes the
+ * audio block's label. Only idea audio blocks whose per-clip toggle
+ * the user switched on are ever queued, so the summary always lands
+ * as the label for those clips (replacing any earlier caption). There
+ * is no transcription in songwriting mode.
  *
  * None of the writes touch the parent idea/song row, so the note's
  * "updated" timestamp never moves because of a transcription.
@@ -88,7 +89,6 @@ class TranscriptionWorker(
         val dao = LyricVaultDatabase.getInstance(applicationContext).lyricVaultDao()
         when (targetType) {
             TARGET_IDEA -> applyToIdea(dao, ownerId, audioPath, transcript, summary)
-            TARGET_SONG -> applyToSong(dao, ownerId, audioPath, summary)
             else -> return@withContext Result.failure()
         }
         settings.markTranscribed(audioPath)
@@ -137,22 +137,18 @@ class TranscriptionWorker(
                 )
             )
         }
-        if (summary.isNotBlank() && audioBlock.textContent.isBlank()) {
-            dao.updateBlock(audioBlock.copy(textContent = summary))
+        // The clip was opted in per-block, so the summary becomes its
+        // label — replacing whatever caption was there. If the summary
+        // call produced nothing, fall back to the transcript's opening
+        // words so the clip still gets a recognisable label.
+        val label = summary.ifBlank {
+            transcript.split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+                .take(12)
+                .joinToString(" ")
         }
-    }
-
-    private suspend fun applyToSong(
-        dao: LyricVaultDao,
-        songId: Long,
-        audioPath: String,
-        summary: String
-    ) {
-        if (summary.isBlank()) return
-        val block = dao.getSongAudioBlocksOnce(songId)
-            .firstOrNull { it.audioFilePath == audioPath } ?: return
-        if (block.label.isBlank()) {
-            dao.updateSongAudioBlock(block.copy(label = summary))
+        if (label.isNotBlank()) {
+            dao.updateBlock(audioBlock.copy(textContent = label))
         }
     }
 
@@ -163,7 +159,6 @@ class TranscriptionWorker(
         /** Work tag the UI watches to show the background-work indicator. */
         const val TAG = "transcription"
         const val TARGET_IDEA = "idea"
-        const val TARGET_SONG = "song"
         const val NO_SPEECH_LABEL = "Hummed melody, no words"
 
         fun uniqueName(audioPath: String): String {

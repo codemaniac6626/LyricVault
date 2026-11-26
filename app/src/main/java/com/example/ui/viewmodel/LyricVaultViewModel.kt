@@ -263,12 +263,14 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
             runCatching {
                 repository.getIdeaOnce(savedId)?.let { aiService.embedIdea(it) }
             }
-            // Queue background transcription for any recorded clips in
-            // this idea (a no-op unless transcription is enabled with a
-            // provider key). WorkManager finishes it even if the app is
-            // closed right after saving.
+            // Queue background transcription for the recorded clips in
+            // this idea whose per-audio toggle is on (a no-op unless
+            // transcription is also enabled with a provider key).
+            // WorkManager finishes it even if the app is closed right
+            // after saving.
             blocks.filter {
-                it.blockType == BlockType.AUDIO && !it.audioFilePath.isNullOrBlank()
+                it.blockType == BlockType.AUDIO && it.transcriptionEnabled &&
+                    !it.audioFilePath.isNullOrBlank()
             }.forEach { block ->
                 TranscriptionWorker.enqueue(
                     getApplication(),
@@ -326,14 +328,8 @@ class LyricVaultViewModel(application: Application) : AndroidViewModel(applicati
                 audioFilePath = recorded.filePath,
                 audioDurationMs = recorded.durationMs
             )
-            // Background transcription gives the melody a summary label
-            // (songs have no block stream, so no transcript block there).
-            TranscriptionWorker.enqueue(
-                getApplication(),
-                TranscriptionWorker.TARGET_SONG,
-                songId,
-                recorded.filePath
-            )
+            // No transcription in songwriting mode: transcription is an
+            // idea-mode feature, gated per audio block there.
             _snackbarMessage.value = "Melody added to this song."
         }
     }

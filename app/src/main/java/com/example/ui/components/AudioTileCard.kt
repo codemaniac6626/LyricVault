@@ -25,11 +25,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,7 +57,11 @@ fun AudioTileCard(
     onCaptionChange: ((String) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    /** Per-clip transcription opt-in; the switch renders only when a
+     *  toggle callback is supplied (the idea editor), never for songs. */
+    transcriptionEnabled: Boolean = false,
+    onTranscriptionToggle: ((Boolean) -> Unit)? = null
 ) {
     val fileAvailable = remember(audioPath) {
         !audioPath.isNullOrBlank() && File(audioPath).exists()
@@ -265,6 +271,29 @@ fun AudioTileCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 4.dp)
                 )
+            }
+
+            if (editable && onTranscriptionToggle != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Switch(
+                        checked = transcriptionEnabled,
+                        onCheckedChange = onTranscriptionToggle,
+                        modifier = Modifier
+                            .scale(0.8f)
+                            .testTag("audio_tile_transcription_toggle")
+                    )
+                    Text(
+                        text = "Transcribe with Groq",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
