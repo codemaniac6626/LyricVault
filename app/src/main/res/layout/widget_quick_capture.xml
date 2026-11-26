@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One wide (4x2) widget: four medium rounded-square tiles in a row,
+<!-- One wide (4x1) widget: four medium rounded-square tiles in a row,
      icons only, no text — "Home" (opens the app's home screen), "Catch
      a quick idea", "Record a melody" and "Write a song". The squares
      are a fixed medium size centred in the widget, not stretched to
@@ -13,7 +13,10 @@
     android:background="@drawable/widget_background"
     android:gravity="center"
     android:orientation="horizontal"
-    android:padding="12dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <LinearLayout
         android:id="@+id/widget_tile_home"
