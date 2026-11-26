@@ -14,12 +14,13 @@ import com.example.MainActivity
 import com.example.R
 
 /**
- * The 4x2 home-screen quick-capture widget: four tiles in a row —
- * "Catch a quick idea", "Record a melody", "Write a song" and "Home".
- * The first three fire PendingIntents that open MainActivity with the
- * matching [WidgetActions] action; MainActivity and the navigation
- * layer turn that into the same screen the in-app buttons open. The
- * Home tile opens the app's home screen via the plain launcher intent.
+ * The icons-only 4x1 home-screen quick-capture widget: four
+ * medium-square tiles in a row — "Home", "Catch a quick idea",
+ * "Record a melody" and "Write a song". The last three fire
+ * PendingIntents that open MainActivity with the matching
+ * [WidgetActions] action; MainActivity and the navigation layer turn
+ * that into the same screen the in-app buttons open. The Home tile
+ * opens the app's home screen via the plain launcher intent.
  */
 class QuickCaptureWidget : AppWidgetProvider() {
 
@@ -69,68 +70,129 @@ class QuickCaptureWidget : AppWidgetProvider() {
             R.id.widget_tile_song,
             tileIntent(context, WidgetActions.NEW_SONG, REQUEST_NEW_SONG)
         )
-        views.setOnClickPendingIntent(R.id.widget_tile_home, openAppIntent(context))
+        views.setOnClickPendingIntent(
+            R.id.widget_tile_home,
+            openAppIntent(context, REQUEST_OPEN_APP)
+        )
         return views
     }
 
-    private fun vectorToBitmap(context: Context, resId: Int): Bitmap =
-        drawableToBitmap(context, context.getDrawable(resId)!!, ICON_SIZE_DP)
-
-    private fun drawableToBitmap(
-        context: Context,
-        drawable: Drawable,
-        sizeDp: Int
-    ): Bitmap {
-        val sizePx = (sizeDp * context.resources.displayMetrics.density).toInt()
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
-        drawable.draw(canvas)
-        return bitmap
-    }
-
-    private fun openAppIntent(context: Context): PendingIntent {
-        // The plain launcher intent: opens the app on its home screen,
-        // exactly like tapping the app icon in the launcher. (No deep
-        // link, so the navigation layer stays on the start destination.)
-        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            ?: Intent(context, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return PendingIntent.getActivity(
-            context,
-            REQUEST_OPEN_APP,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun tileIntent(context: Context, action: String, requestCode: Int): PendingIntent {
-        // ACTION_VIEW + the tile's deep-link URI: the navigation layer
-        // resolves it with NavController.handleDeepLink, the standard
-        // widget-to-screen path. (The earlier version reused the plain
-        // launch intent with a custom action string, and taps landed on
-        // the start destination instead of the tile's screen.)
-        val intent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse(WidgetActions.uriFor(action)),
-            context,
-            MainActivity::class.java
-        ).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
     private companion object {
-        const val ICON_SIZE_DP = 30
         const val REQUEST_OPEN_APP = 100
         const val REQUEST_NEW_IDEA = 101
         const val REQUEST_RECORD_MELODY = 102
         const val REQUEST_NEW_SONG = 103
     }
+}
+
+/**
+ * The classic 4x2 quick-capture widget: the original three-button
+ * style — "Catch a quick idea", "Record a melody" and "Write a song"
+ * as full-height tiles with icon over label. Listed in the widget
+ * picker alongside [QuickCaptureWidget]; the tiles fire the same
+ * deep-link intents.
+ */
+class QuickCaptureClassicWidget : AppWidgetProvider() {
+
+    override fun onUpdate(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray
+    ) {
+        for (appWidgetId in appWidgetIds) {
+            appWidgetManager.updateAppWidget(appWidgetId, buildViews(context))
+        }
+    }
+
+    private fun buildViews(context: Context): RemoteViews {
+        val views = RemoteViews(context.packageName, R.layout.widget_quick_capture_classic)
+        // Icons are rasterised to bitmaps in the app process for the
+        // same reason as in QuickCaptureWidget (see its buildViews).
+        views.setImageViewBitmap(
+            R.id.widget_icon_idea_classic,
+            vectorToBitmap(context, R.drawable.ic_widget_idea)
+        )
+        views.setImageViewBitmap(
+            R.id.widget_icon_record_classic,
+            vectorToBitmap(context, R.drawable.ic_widget_mic)
+        )
+        views.setImageViewBitmap(
+            R.id.widget_icon_song_classic,
+            vectorToBitmap(context, R.drawable.ic_widget_song)
+        )
+        views.setOnClickPendingIntent(
+            R.id.widget_tile_idea_classic,
+            tileIntent(context, WidgetActions.NEW_IDEA, REQUEST_NEW_IDEA_CLASSIC)
+        )
+        views.setOnClickPendingIntent(
+            R.id.widget_tile_record_classic,
+            tileIntent(context, WidgetActions.RECORD_MELODY, REQUEST_RECORD_MELODY_CLASSIC)
+        )
+        views.setOnClickPendingIntent(
+            R.id.widget_tile_song_classic,
+            tileIntent(context, WidgetActions.NEW_SONG, REQUEST_NEW_SONG_CLASSIC)
+        )
+        return views
+    }
+
+    private companion object {
+        const val REQUEST_NEW_IDEA_CLASSIC = 201
+        const val REQUEST_RECORD_MELODY_CLASSIC = 202
+        const val REQUEST_NEW_SONG_CLASSIC = 203
+    }
+}
+
+private const val ICON_SIZE_DP = 30
+
+private fun vectorToBitmap(context: Context, resId: Int): Bitmap =
+    drawableToBitmap(context, context.getDrawable(resId)!!, ICON_SIZE_DP)
+
+private fun drawableToBitmap(
+    context: Context,
+    drawable: Drawable,
+    sizeDp: Int
+): Bitmap {
+    val sizePx = (sizeDp * context.resources.displayMetrics.density).toInt()
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    drawable.setBounds(0, 0, canvas.width, canvas.height)
+    drawable.draw(canvas)
+    return bitmap
+}
+
+private fun openAppIntent(context: Context, requestCode: Int): PendingIntent {
+    // The plain launcher intent: opens the app on its home screen,
+    // exactly like tapping the app icon in the launcher. (No deep
+    // link, so the navigation layer stays on the start destination.)
+    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        ?: Intent(context, MainActivity::class.java)
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return PendingIntent.getActivity(
+        context,
+        requestCode,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+}
+
+private fun tileIntent(context: Context, action: String, requestCode: Int): PendingIntent {
+    // ACTION_VIEW + the tile's deep-link URI: the navigation layer
+    // resolves it with NavController.handleDeepLink, the standard
+    // widget-to-screen path. (The earlier version reused the plain
+    // launch intent with a custom action string, and taps landed on
+    // the start destination instead of the tile's screen.)
+    val intent = Intent(
+        Intent.ACTION_VIEW,
+        Uri.parse(WidgetActions.uriFor(action)),
+        context,
+        MainActivity::class.java
+    ).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    }
+    return PendingIntent.getActivity(
+        context,
+        requestCode,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
 }
